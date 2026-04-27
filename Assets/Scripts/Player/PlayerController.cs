@@ -78,10 +78,11 @@ namespace PuzzleDungeon.Player
                 _currentMoveDirection = (camForward * vertical + camRight * horizontal).normalized;
             }
 
-            if (_currentMoveDirection.magnitude >= 0.1f)
+            if (_currentMoveDirection.magnitude >= 0.01f)
             {
-                // On applique le mouvement (vitesse normale au sol, un peu moins en l'air si tu veux)
-                float speed = _isGrounded ? _moveSpeed : _moveSpeed * 0.8f; 
+                // Si on est en auto-saut, on utilise la vitesse calculée directement
+                // Sinon, on utilise la vitesse de mouvement normale
+                float speed = _isAutoJumpingToTarget ? 1f : (_isGrounded ? _moveSpeed : _moveSpeed * 0.8f); 
                 _controller.Move(_currentMoveDirection * speed * Time.deltaTime);
 
                 // Rotation : on ne tourne que si on est au sol (ou très peu en l'air)
@@ -93,8 +94,64 @@ namespace PuzzleDungeon.Player
             }
         }
 
+        private Vector3 _autoJumpTarget;
+        private bool _isAutoJumpingToTarget;
+
+        public void TriggerJump()
+        {
+            if (!_isGrounded) return;
+            
+            _velocity.y = Mathf.Sqrt(_jumpForce * -2f * _gravity);
+            _currentState = PlayerState.Jump;
+        }
+
+        public void JumpTo(Vector3 targetPosition)
+        {
+            if (!_isGrounded || _isAutoJumpingToTarget) return;
+
+            _autoJumpTarget = targetPosition;
+            _isAutoJumpingToTarget = true;
+            
+            // On déclenche le saut normal
+            TriggerJump();
+
+            // On calcule la vitesse horizontale nécessaire pour atteindre la cible
+            // Temps de vol = 2 * (vy / g)
+            float vy = _velocity.y;
+            float timeToLand = 2f * (vy / -_gravity);
+
+            Vector3 diff = targetPosition - transform.position;
+            diff.y = 0;
+            
+            // On remplace la direction actuelle par celle vers la cible
+            _currentMoveDirection = diff / timeToLand; 
+        }
+
         private void HandleAutoJump()
         {
+            if (_isAutoJumpingToTarget)
+            {
+                // On calcule la distance horizontale restante
+                Vector3 horizontalPos = new Vector3(transform.position.x, 0, transform.position.z);
+                Vector3 horizontalTarget = new Vector3(_autoJumpTarget.x, 0, _autoJumpTarget.z);
+                
+                float distance = Vector3.Distance(horizontalPos, horizontalTarget);
+                
+                if (distance < 0.05f || _isGrounded && _velocity.y < 0)
+                {
+                    _isAutoJumpingToTarget = false;
+                    _currentMoveDirection = Vector3.zero;
+                }
+                else
+                {
+                    // On force la direction vers la cible avec une vitesse proportionnelle
+                    // pour arriver exactement au centre.
+                    Vector3 direction = (horizontalTarget - horizontalPos).normalized;
+                    _currentMoveDirection = direction * (distance / 0.15f); // Ajustement fluide
+                }
+                return;
+            }
+
             // Auto jump logic: check if there's no ground ahead while moving
             if (!_isGrounded || CurrentState == PlayerState.Jump) return;
 
@@ -107,8 +164,7 @@ namespace PuzzleDungeon.Player
             if (!Physics.Raycast(rayStart, Vector3.down, 1.0f, _groundLayer))
             {
                 // No ground ahead! Trigger jump
-                _velocity.y = Mathf.Sqrt(_jumpForce * -2f * _gravity);
-                _currentState = PlayerState.Jump;
+                TriggerJump();
             }
         }
 
@@ -156,15 +212,20 @@ namespace PuzzleDungeon.Player
             // On ne pousse pas vers le bas
             if (hit.moveDirection.y < -0.3f) return;
 
-            // Calcul de la direction de poussée : on force sur un seul axe (le plus dominant)
+            // Calcul de la direction basée sur la position relative (Joueur -> Bloc)
+            // Cela garantit qu'on pousse le bloc "loin de soi" sur l'axe le plus logique
+            Vector3 directionToBlock = hit.collider.bounds.center - transform.position;
+            directionToBlock.y = 0; // On ignore la hauteur
+
             Vector3 pushDir = Vector3.zero;
-            if (Mathf.Abs(hit.moveDirection.x) > Mathf.Abs(hit.moveDirection.z))
+
+            if (Mathf.Abs(directionToBlock.x) > Mathf.Abs(directionToBlock.z))
             {
-                pushDir = new Vector3(hit.moveDirection.x > 0 ? 1 : -1, 0, 0);
+                pushDir = new Vector3(directionToBlock.x > 0 ? 1 : -1, 0, 0);
             }
             else
             {
-                pushDir = new Vector3(0, 0, hit.moveDirection.z > 0 ? 1 : -1);
+                pushDir = new Vector3(0, 0, directionToBlock.z > 0 ? 1 : -1);
             }
 
             // On applique la force sur l'axe choisi

@@ -29,6 +29,16 @@ namespace PuzzleDungeon.Player
         private Vector3 _currentVelocity;
         private Vector3 _smoothPosition;
 
+        [Header("Focus Settings")]
+        [SerializeField] private float _focusSmoothTime = 0.5f;
+        [SerializeField, Range(0f, 1f)] private float _focusLookAtWeight = 0.8f; // 1 = Porte au centre, 0 = Joueur au centre
+        [SerializeField] private float _focusYOffset = 1.0f; // Pour monter un peu la vue
+        
+        private Transform _focusTarget;
+        private float _focusTimeRemaining = 0f;
+        private float _totalFocusDuration = 0f;
+        private System.Collections.Generic.HashSet<Transform> _focusedTargets = new System.Collections.Generic.HashSet<Transform>();
+
         private void Start()
         {
             if (_target == null)
@@ -45,13 +55,25 @@ namespace PuzzleDungeon.Player
 
             Cursor.lockState = CursorLockMode.Locked;
             _smoothPosition = _target.position + _offset;
+
+            // Initialisation des angles actuels
+            _currentX = transform.eulerAngles.y;
+            _currentY = transform.eulerAngles.x;
         }
 
         private void LateUpdate()
         {
             if (_target == null) return;
 
-            HandleInput();
+            if (_focusTimeRemaining > 0)
+            {
+                UpdateFocus();
+            }
+            else
+            {
+                HandleInput();
+            }
+            
             CalculateCameraPosition();
         }
 
@@ -69,6 +91,64 @@ namespace PuzzleDungeon.Player
             {
                 Cursor.lockState = Cursor.lockState == CursorLockMode.Locked ? CursorLockMode.None : CursorLockMode.Locked;
             }
+        }
+
+        private void UpdateFocus()
+        {
+            _focusTimeRemaining -= Time.deltaTime;
+
+            Vector3 dirToTarget = (_focusTarget.position - (_target.position + _offset)).normalized;
+            Quaternion targetRot = Quaternion.LookRotation(dirToTarget);
+            
+            float targetX = targetRot.eulerAngles.y;
+            float targetY = targetRot.eulerAngles.x;
+            if (targetY > 180) targetY -= 360;
+
+            // Augmentation de la réactivité de la transition
+            float t = Time.deltaTime * (1f / _focusSmoothTime);
+            _currentX = Mathf.LerpAngle(_currentX, targetX, t * 2f);
+            _currentY = Mathf.Lerp(_currentY, targetY, t * 2f);
+            
+            if (_focusTimeRemaining <= 0)
+            {
+                Debug.Log($"[CameraController] Focus on {_focusTarget.name} finished.");
+                _focusTarget = null;
+            }
+        }
+
+        public void FocusOnOnce(Transform target) => FocusOnOnce(target, 2.0f);
+
+        public void FocusOnOnce(Transform target, float duration)
+        {
+            if (target == null) return;
+
+            if (_focusedTargets.Contains(target))
+            {
+                Debug.Log($"[CameraController] Already focused on {target.name}, skipping.");
+                return;
+            }
+            
+            Debug.Log($"[CameraController] First focus on {target.name}, starting cinematic.");
+            _focusedTargets.Add(target);
+            FocusOn(target, duration);
+        }
+
+        /// <summary>
+        /// Force la caméra à regarder une cible pendant une durée déterminée.
+        /// </summary>
+        public void FocusOn(Transform target) => FocusOn(target, 2.0f);
+
+        public void FocusOn(Transform target, float duration)
+        {
+            if (target == null) return;
+            
+            // Sécurité : si la durée est 0 (erreur dans l'inspecteur Unity), on met 2s
+            if (duration <= 0) duration = 2.0f;
+
+            Debug.Log($"[CameraController] Starting focus on {target.name} for {duration}s");
+            _focusTarget = target;
+            _focusTimeRemaining = duration;
+            _totalFocusDuration = duration;
         }
 
         private void CalculateCameraPosition()
@@ -105,7 +185,17 @@ namespace PuzzleDungeon.Player
             }
             
             transform.position = _smoothPosition + rayDirection * _currentDistance;
-            transform.LookAt(_smoothPosition);
+            
+            // Gestion du cadrage (Look At)
+            Vector3 lookTarget = _smoothPosition;
+            if (_focusTarget != null && _focusTimeRemaining > 0)
+            {
+                // On mélange la position du joueur et celle de la cible pour le cadrage
+                Vector3 focusPoint = _focusTarget.position + Vector3.up * _focusYOffset;
+                lookTarget = Vector3.Lerp(_smoothPosition, focusPoint, _focusLookAtWeight);
+            }
+
+            transform.LookAt(lookTarget);
         }
     }
 }
