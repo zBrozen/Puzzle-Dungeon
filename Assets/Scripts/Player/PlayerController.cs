@@ -27,6 +27,7 @@ namespace PuzzleDungeon.Player
 
         public PlayerState CurrentState => _currentState;
         public float MovementSpeed => new Vector2(_controller.velocity.x, _controller.velocity.z).magnitude;
+        public bool IsLocked { get; set; }
 
         private void Awake()
         {
@@ -38,8 +39,19 @@ namespace PuzzleDungeon.Player
         private void Update()
         {
             HandleGroundedStatus();
-            HandleMovement();
-            HandleAutoJump();
+            
+            if (!IsLocked)
+            {
+                HandleMovement();
+                HandleAutoJump();
+            }
+            else
+            {
+                _inputDirection = Vector2.zero;
+                // On garde la direction actuelle mais on ne bouge plus via l'input
+                if (_isGrounded) _currentMoveDirection = Vector3.zero;
+            }
+
             ApplyGravity();
             UpdateState();
         }
