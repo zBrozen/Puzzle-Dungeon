@@ -12,7 +12,6 @@ Material:
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0
   m_ValidKeywords:
-  - UTS_RP_BUILTIN
   - _EMISSIVE_SIMPLE
   - _IS_CLIPPING_TRANSMODE
   - _IS_OUTLINE_CLIPPING_YES
@@ -21,11 +20,11 @@ Material:
   - _EMISSION
   m_LightmapFlags: 2
   m_EnableInstancingVariants: 0
-  m_DoubleSidedGI: 0
-  m_CustomRenderQueue: 2450
+  m_DoubleSidedGI: 1
+  m_CustomRenderQueue: 3000
   stringTagMap:
-    IgnoreProjection: False
-    RenderType: TransparentCutout
+    IgnoreProjection: true
+    RenderType: Transparent
   disabledShaderPasses: []
   m_LockedProperties: 
   m_SavedProperties:
@@ -369,8 +368,8 @@ Material:
     - _Rotate_EmissiveUV: 0
     - _Rotate_MatCapUV: 0
     - _Rotate_NormalMapForMatCapUV: 0
-    - _SPRDefaultUnlitColorMask: 15
-    - _SRPDefaultUnlitColMode: 1
+    - _SPRDefaultUnlitColorMask: 0
+    - _SRPDefaultUnlitColMode: 2
     - _Scroll_EmissiveU: 0
     - _Scroll_EmissiveV: 0
     - _SecondShadeOverridden: 0
@@ -407,7 +406,7 @@ Material:
     - _Thickness: 1
     - _TransmissionMask: 1
     - _TransparentCullMode: 2
-    - _TransparentEnabled: 0
+    - _TransparentEnabled: 1
     - _TransparentZWrite: 0
     - _TweakHighColorOnShadow: 0
     - _TweakMatCapOnShadow: 0
@@ -425,13 +424,13 @@ Material:
     - _UseShadowThreshold: 0
     - _Use_1stAs2nd: 1
     - _Use_BaseAs1st: 1
-    - _ZOverDrawMode: 0
+    - _ZOverDrawMode: 1
     - _ZTestDepthEqualForOpaque: 4
     - _ZTestGBuffer: 4
     - _ZTestModeDistortion: 8
     - _ZTestTransparent: 4
     - _ZWrite: 1
-    - _ZWriteMode: 1
+    - _ZWriteMode: 0
     - _simpleUI: 0
     - _utsTechnique: 0
     m_Colors:

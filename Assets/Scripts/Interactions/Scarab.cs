@@ -20,6 +20,7 @@ namespace PuzzleDungeon.Interactions
         private float _currentRoll = 0f;
         private float _lifetime = 0f;
         private bool _isDestroyed = false;
+        private bool _isFlying = false;
 
         public System.Action OnScarabDestroyed;
         private Transform _owner;
@@ -36,9 +37,20 @@ namespace PuzzleDungeon.Interactions
             _owner = owner;
         }
 
+        public void Launch()
+        {
+            _isFlying = true;
+            _lifetime = 0f;
+            
+            // Réinitialiser les angles sur la rotation actuelle (fin de visée)
+            _currentYaw = transform.eulerAngles.y;
+            _currentPitch = transform.eulerAngles.x;
+            if (_currentPitch > 180) _currentPitch -= 360;
+        }
+
         private void Update()
         {
-            if (_isDestroyed) return;
+            if (_isDestroyed || !_isFlying) return;
 
             HandleInputAndMovement();
 
@@ -60,11 +72,20 @@ namespace PuzzleDungeon.Interactions
 
             // 2. Calcul des angles
             _currentYaw += horizontal * _turnSpeed * Time.deltaTime;
-            _currentPitch -= vertical * _pitchSpeed * Time.deltaTime; // Plus de clamp pour permettre les loopings
-            _currentRoll = 0f;
+            _currentPitch -= vertical * _pitchSpeed * Time.deltaTime; 
+            
+            // Calcul du Roll (inclinaison) visuel
+            float targetRoll = -horizontal * _tiltAmount;
+            _currentRoll = Mathf.Lerp(_currentRoll, targetRoll, Time.deltaTime * _smoothRotationTime);
 
-            // 3. Application de la rotation
-            transform.rotation = Quaternion.Euler(_currentPitch, _currentYaw, _currentRoll);
+            // 3. Application de la rotation (Pivot principal reste droit pour la caméra)
+            transform.rotation = Quaternion.Euler(_currentPitch, _currentYaw, 0f);
+
+            // Application de l'inclinaison uniquement au modèle visuel
+            if (_model != null)
+            {
+                _model.localRotation = Quaternion.Euler(0, 0, _currentRoll);
+            }
 
             // 4. Détection de collision manuelle (Bulletproof)
             float moveDistance = _forwardSpeed * Time.deltaTime;
