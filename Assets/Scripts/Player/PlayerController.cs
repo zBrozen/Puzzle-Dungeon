@@ -5,7 +5,7 @@ namespace PuzzleDungeon.Player
     [RequireComponent(typeof(CharacterController))]
     public class PlayerController : MonoBehaviour
     {
-        public enum PlayerState { Idle, Move, Jump, Fall, Land }
+        public enum PlayerState { Idle, Move, Jump, Fall, Land, Climb }
 
         [Header("Movement Settings")]
         [SerializeField] private float _moveSpeed = 5f;
@@ -16,13 +16,33 @@ namespace PuzzleDungeon.Player
         [Header("Auto Jump Settings")]
         [SerializeField] private float _edgeCheckDistance = 0.5f;
         [SerializeField] private float _edgeCheckHeight = 0.1f;
+        [SerializeField] private float _minRunTimeToJump = 0.3f;
+        [SerializeField] private float _jumpObstacleCheckDistance = 1.0f;
         [SerializeField] private LayerMask _groundLayer;
+        
+        [Header("Climbing Settings")]
+        [SerializeField] private KeyCode _climbKey = KeyCode.Space;
+        [SerializeField] private float _climbCheckDistance = 1.0f;
+        [SerializeField] private float _climbMaxHeight = 2.5f;
+        [SerializeField] private float _climbLedgeDetectionHeight = 1.2f;
+        [SerializeField] private float _climbHorizontalOffset = 0.6f;
+        [SerializeField] private float _climbHangOffsetY = 1.8f;
+        [SerializeField] private float _climbVerticalOffset = 0f;
+        [SerializeField] private LayerMask _climbableLayer;
+
+        [Header("Climbing Durations")]
+        [SerializeField] private float _grabDuration = 0.4f;
+        [SerializeField] private float _climbWaitTime = 0.2f;
+        [SerializeField] private float _ledgeWaitTime = 0.2f;
+        [SerializeField] private float _liftDuration = 0.8f;
+        [SerializeField] private float _forwardDuration = 0.4f;
 
         private CharacterController _controller;
         private Vector3 _velocity;
         private Vector3 _currentMoveDirection;
         private Vector2 _inputDirection;
         private bool _isGrounded;
+        private float _currentRunTime;
         private PlayerState _currentState = PlayerState.Idle;
 
         public PlayerState CurrentState => _currentState;
@@ -34,26 +54,37 @@ namespace PuzzleDungeon.Player
             _controller = GetComponent<CharacterController>();
             // Default ground layer to Everything if not set
             if (_groundLayer == 0) _groundLayer = ~0;
+            
+            // Sécurité : si la nouvelle variable est à 0 (valeur par défaut d'Unity), on lui donne une valeur correcte
+            if (_climbHangOffsetY == 0f) _climbHangOffsetY = 1.8f;
         }
 
         private void Update()
         {
             HandleGroundedStatus();
             
-            if (!IsLocked)
+            if (!IsLocked && _currentState != PlayerState.Climb)
             {
-                HandleMovement();
-                HandleAutoJump();
+                HandleClimbInput(); // Priorité à la grimpe
+                
+                if (_currentState != PlayerState.Climb)
+                {
+                    HandleMovement();
+                    HandleAutoJump();
+                }
             }
-            else
+            else if (IsLocked)
             {
                 _inputDirection = Vector2.zero;
                 // On garde la direction actuelle mais on ne bouge plus via l'input
                 if (_isGrounded) _currentMoveDirection = Vector3.zero;
             }
 
-            ApplyGravity();
-            UpdateState();
+            if (_currentState != PlayerState.Climb)
+            {
+                ApplyGravity();
+                UpdateState();
+            }
         }
 
         private void HandleGroundedStatus()
@@ -92,6 +123,9 @@ namespace PuzzleDungeon.Player
 
             if (_currentMoveDirection.magnitude >= 0.01f)
             {
+                // On incrémente le temps de course si on bouge au sol
+                if (_isGrounded) _currentRunTime += Time.deltaTime;
+
                 // Si on est en auto-saut, on utilise la vitesse calculée directement
                 // Sinon, on utilise la vitesse de mouvement normale
                 float speed = _isAutoJumpingToTarget ? 1f : (_isGrounded ? _moveSpeed : _moveSpeed * 0.8f); 
@@ -103,6 +137,10 @@ namespace PuzzleDungeon.Player
                     Quaternion targetRotation = Quaternion.LookRotation(_currentMoveDirection);
                     transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, _rotationSpeed * Time.deltaTime);
                 }
+            }
+            else
+            {
+                _currentRunTime = 0f;
             }
         }
 
@@ -165,10 +203,23 @@ namespace PuzzleDungeon.Player
             }
 
             // Auto jump logic: check if there's no ground ahead while moving
-            if (!_isGrounded || CurrentState == PlayerState.Jump) return;
+            // Conditions: 
+            // 1. Must be grounded
+            // 2. Must not be already jumping
+            // 3. Must have been running for a minimum duration
+            // 4. Player must be actively pushing the stick (input magnitude > 0.1)
+            if (!_isGrounded || CurrentState == PlayerState.Jump || _currentRunTime < _minRunTimeToJump || _inputDirection.magnitude < 0.1f) return;
 
             Vector3 moveDirection = new Vector3(_controller.velocity.x, 0, _controller.velocity.z).normalized;
             if (moveDirection.magnitude < 0.1f) return;
+
+            // Optional: Ensure moveDirection is somewhat aligned with input direction to avoid inertia jumps
+            if (Vector3.Dot(moveDirection, _currentMoveDirection) < 0.5f) return;
+
+            // Safety check: Don't jump if there's a wall immediately in front of us
+            Vector3 obstacleCheckOrigin = transform.position + Vector3.up * 0.5f; // Check from waist height
+            // We check for any obstacles on the default, ground or climbable layers
+            if (Physics.Raycast(obstacleCheckOrigin, moveDirection, _jumpObstacleCheckDistance, _groundLayer | _climbableLayer | 1)) return;
 
             // Cast ray slightly ahead and down
             Vector3 rayStart = transform.position + Vector3.up * _edgeCheckHeight + moveDirection * _edgeCheckDistance;
@@ -178,6 +229,147 @@ namespace PuzzleDungeon.Player
                 // No ground ahead! Trigger jump
                 TriggerJump();
             }
+        }
+
+        private void HandleClimbInput()
+        {
+            // Pour éviter les bugs où le CharacterController se croit au sol sur une micro-corniche du mur,
+            // on vérifie avec un Raycast strict vers le bas.
+            bool trueGrounded = Physics.Raycast(transform.position + Vector3.up * 0.1f, Vector3.down, 0.3f, _groundLayer);
+
+            // On peut grimper si :
+            // 1. On appuie sur la touche (manuel, souvent utilisé au sol)
+            // 2. On n'est pas "vraiment" au sol (automatique, pour attraper un rebord pendant un saut/chute)
+            bool shouldCheck = Input.GetKeyDown(_climbKey) || !trueGrounded;
+
+            if (shouldCheck)
+            {
+                if (CheckForClimbableLedge(out Vector3 targetPos, out Vector3 wallNormal))
+                {
+                    StartCoroutine(ClimbRoutine(targetPos, wallNormal));
+                }
+            }
+        }
+
+        private bool CheckForClimbableLedge(out Vector3 targetPos, out Vector3 wallNormal)
+        {
+            targetPos = Vector3.zero;
+            wallNormal = Vector3.zero;
+            Vector3 direction = transform.forward;
+            
+            // On recule l'origine du SphereCast pour être sûr de ne pas commencer à l'intérieur du collider du mur
+            Vector3 origin = transform.position + Vector3.up * 0.5f - direction * 0.3f; 
+
+            // 1. Détection du mur avec un SphereCast pour être plus tolérant sur les sauts en biais
+            if (Physics.SphereCast(origin, 0.3f, direction, out RaycastHit wallHit, _climbCheckDistance + 0.3f, _climbableLayer))
+            {
+                wallNormal = wallHit.normal;
+
+                // 2. Vérifier s'il y a de la place au-dessus
+                Vector3 highOrigin = transform.position + Vector3.up * _climbMaxHeight - direction * 0.3f;
+                if (!Physics.SphereCast(highOrigin, 0.3f, direction, out _, _climbCheckDistance + 0.3f, _climbableLayer | _groundLayer))
+                {
+                    // 3. Trouver le haut exact du rebord (uniquement sur le layer climbable)
+                    // On lance un rayon vers le bas depuis un point au-dessus de la cible potentielle
+                    // Utiliser la normale du mur pour garantir qu'on sonde bien "à l'intérieur" de la corniche
+                    Vector3 inwardDir = -wallHit.normal;
+                    inwardDir.y = 0;
+                    inwardDir.Normalize();
+                    
+                    Vector3 checkPoint = wallHit.point + inwardDir * 0.35f + Vector3.up * (_climbMaxHeight - 0.5f);
+                    if (Physics.Raycast(checkPoint, Vector3.down, out RaycastHit ledgeHit, _climbMaxHeight, _climbableLayer))
+                    {
+                        // On vérifie que la hauteur est grimpable (pas trop haut, pas trop bas)
+                        float height = ledgeHit.point.y - transform.position.y;
+                        if (height > 0.5f && height <= _climbMaxHeight)
+                        {
+                            targetPos = ledgeHit.point;
+                            return true;
+                        }
+                    }
+                }
+            }
+            return false;
+        }
+
+        private System.Collections.IEnumerator ClimbRoutine(Vector3 targetPos, Vector3 wallNormal)
+        {
+            _currentState = PlayerState.Climb;
+            _velocity = Vector3.zero;
+            
+            Debug.Log($"[Climb] Start. Target Ledge Y: {targetPos.y} | Player Y: {transform.position.y}");
+
+            // On désactive le controller pour manipuler le transform librement
+            _controller.enabled = false;
+
+            // Orientation du joueur face au mur
+            Vector3 inwardDir = -wallNormal;
+            inwardDir.y = 0;
+            inwardDir.Normalize();
+            Quaternion targetRotation = Quaternion.LookRotation(inwardDir);
+
+            Vector3 startPos = transform.position;
+            Quaternion startRot = transform.rotation;
+            
+            // On se place à une distance de sécurité du mur en utilisant la NORMALE du mur
+            Vector3 grabPos = new Vector3(targetPos.x, 0, targetPos.z) + wallNormal * _climbHorizontalOffset;
+            
+            // Ajustement précis de la hauteur pour correspondre à l'animation d'accroche
+            grabPos.y = targetPos.y - _climbHangOffsetY;
+            
+            // Phase 1 : Accroche (Rapide déplacement vers le mur et rotation)
+            float elapsed = 0;
+            while (elapsed < _grabDuration)
+            {
+                float t = elapsed / _grabDuration;
+                transform.position = Vector3.Lerp(startPos, grabPos, t);
+                transform.rotation = Quaternion.Slerp(startRot, targetRotation, t);
+                elapsed += Time.deltaTime;
+                yield return null;
+            }
+            transform.position = grabPos;
+            transform.rotation = targetRotation;
+            
+            // Attente pour laisser l'animation se jouer
+            yield return new WaitForSeconds(_climbWaitTime);
+
+            // Phase 2 : Montée (Décomposition en Elévation puis Avancée)
+            Vector3 endPos = targetPos + Vector3.up * 0.05f; 
+            Vector3 horizontalPos = new Vector3(targetPos.x, 0, targetPos.z) + wallNormal * _climbHorizontalOffset;
+            Vector3 peakPos = new Vector3(horizontalPos.x, endPos.y + _climbVerticalOffset, horizontalPos.z);
+
+            Debug.Log($"[Climb] Phase 2. Peak Y: {peakPos.y} | End Y: {endPos.y}");
+
+            // 2a : Elévation (Verticale)
+            elapsed = 0;
+            while (elapsed < _liftDuration)
+            {
+                float t = elapsed / _liftDuration;
+                float smoothT = t * t * (3f - 2f * t);
+                transform.position = Vector3.Lerp(grabPos, peakPos, smoothT);
+                elapsed += Time.deltaTime;
+                yield return null;
+            }
+            transform.position = peakPos;
+
+            // Pause au sommet du rebord avant d'avancer
+            yield return new WaitForSeconds(_ledgeWaitTime);
+
+            // 2b : Avancée (Horizontale uniquement)
+            elapsed = 0;
+            Vector3 horizontalEndPos = new Vector3(endPos.x, peakPos.y, endPos.z);
+            while (elapsed < _forwardDuration)
+            {
+                float t = elapsed / _forwardDuration;
+                float smoothT = t * t * (3f - 2f * t);
+                transform.position = Vector3.Lerp(peakPos, horizontalEndPos, smoothT);
+                elapsed += Time.deltaTime;
+                yield return null;
+            }
+            transform.position = endPos;
+
+            _controller.enabled = true;
+            _currentState = PlayerState.Idle;
         }
 
         private void ApplyGravity()
@@ -190,6 +382,12 @@ namespace PuzzleDungeon.Player
         {
             if (_isGrounded)
             {
+                // Si on vient de tomber ou de sauter et qu'on touche le sol, on réinitialise le temps de course
+                if (_currentState == PlayerState.Fall || _currentState == PlayerState.Jump)
+                {
+                    _currentRunTime = 0f;
+                }
+
                 if (_inputDirection.magnitude > 0.1f)
                     _currentState = PlayerState.Move;
                 else
@@ -211,11 +409,44 @@ namespace PuzzleDungeon.Player
             Vector3 rayStart = transform.position + Vector3.up * _edgeCheckHeight + moveDirection * _edgeCheckDistance;
             Gizmos.color = Color.red;
             Gizmos.DrawLine(rayStart, rayStart + Vector3.down * 1.0f);
+
+            // Visualize climb detection
+            Gizmos.color = Color.blue;
+            Vector3 origin = transform.position + Vector3.up * 0.5f;
+            Gizmos.DrawRay(origin, transform.forward * _climbCheckDistance);
+            
+            Gizmos.color = Color.cyan;
+            Vector3 highOrigin = transform.position + Vector3.up * _climbMaxHeight;
+            Gizmos.DrawRay(highOrigin, transform.forward * _climbCheckDistance);
+
+            // Visualisation du point cible détecté
+            if (CheckForClimbableLedge(out Vector3 target, out Vector3 wallNormal))
+            {
+                // Haut du rebord (vert)
+                Gizmos.color = Color.green;
+                Gizmos.DrawWireSphere(target, 0.15f);
+
+                // Position finale du personnage (grabPos)
+                Vector3 grabPos = new Vector3(target.x, target.y - _climbHangOffsetY, target.z) + wallNormal * _climbHorizontalOffset;
+                
+                // Dessiner une ligne entre le rebord et le personnage
+                Gizmos.color = Color.yellow;
+                Gizmos.DrawLine(target, grabPos);
+
+                // Dessiner une "boîte" approximative représentant le joueur (hauteur ~2 unités, pivot aux pieds)
+                Gizmos.DrawWireCube(grabPos + Vector3.up * 1.0f, new Vector3(0.6f, 2.0f, 0.6f));
+                
+                // Dessiner une petite sphère rouge pour les pieds (le pivot exact)
+                Gizmos.color = Color.red;
+                Gizmos.DrawWireSphere(grabPos, 0.1f);
+            }
         }
 
         // --- Interaction avec les blocs ---
         private void OnControllerColliderHit(ControllerColliderHit hit)
         {
+            if (_currentState == PlayerState.Climb) return;
+
             Rigidbody body = hit.collider.attachedRigidbody;
 
             // Si on touche un Rigidbody qui n'est pas cinématique

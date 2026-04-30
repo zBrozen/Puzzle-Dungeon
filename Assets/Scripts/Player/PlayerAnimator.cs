@@ -52,6 +52,9 @@ namespace PuzzleDungeon.Player
                 case PlayerController.PlayerState.Land:
                     stateName = "Land";
                     break;
+                case PlayerController.PlayerState.Climb:
+                    stateName = "Climb";
+                    break;
             }
 
             if (!string.IsNullOrEmpty(stateName))
