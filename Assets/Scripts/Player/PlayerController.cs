@@ -1,17 +1,54 @@
 using UnityEngine;
+using PuzzleDungeon.Interactions;
+using System;
 
 namespace PuzzleDungeon.Player
 {
     [RequireComponent(typeof(CharacterController))]
     public class PlayerController : MonoBehaviour
     {
-        public enum PlayerState { Idle, Move, Jump, Fall, Land, Climb }
+        public event Action OnDrawWeapon;
+        public event Action OnSheatheWeapon;
+        
+        public enum PlayerState { Idle, Move, Jump, Fall, Land, Climb, Push, BigPush, HardLand, Roll }
 
         [Header("Movement Settings")]
         [SerializeField] private float _moveSpeed = 5f;
         [SerializeField] private float _rotationSpeed = 10f;
         [SerializeField] private float _gravity = -20f;
         [SerializeField] private float _jumpForce = 7f;
+        [SerializeField, Tooltip("Multiplicateur de vitesse horizontale en l'air (pour saut en longueur)")]
+        private float _jumpForwardSpeedMultiplier = 1.2f;
+        [SerializeField, Tooltip("Hauteur max des marches franchissables au sol")] 
+        private float _stepHeight = 0.3f;
+
+        [Header("Hard Landing Settings")]
+        [SerializeField, Tooltip("Hauteur de chute minimale pour déclencher la roulade d'atterrissage")]
+        private float _hardLandHeightThreshold = 5f;
+        [SerializeField, Tooltip("Durée de l'état HardLand (temps de la roulade)")]
+        private float _hardLandDuration = 1.0f;
+
+        [Header("Roll Settings")]
+        [SerializeField, Tooltip("Durée de la roulade (en secondes)")]
+        private float _rollDuration = 0.5f;
+        [SerializeField, Tooltip("Multiplicateur de vitesse pendant la roulade")]
+        private float _rollSpeedMultiplier = 2.0f;
+        [SerializeField, Tooltip("Fenêtre de temps après une roulade pour obtenir le bonus de saut (en secondes)")]
+        private float _rollJumpBoostWindow = 0.4f;
+        [SerializeField, Tooltip("Multiplicateur de jumpForwardSpeed supplémentaire si on saute juste après une roulade")]
+        private float _rollJumpBoostMultiplier = 1.3f;
+        [SerializeField, Tooltip("Temps de recharge entre deux roulades (en secondes)")]
+        private float _rollCooldown = 0.8f;
+
+        [Header("Weapon & Combat Settings")]
+        [SerializeField] private KeyCode _attackKey = KeyCode.Mouse0;
+        [SerializeField, Tooltip("Temps avant de rengainer automatiquement")] private float _autoSheatheDelay = 5f;
+        [SerializeField, Tooltip("L'épée attachée à la main")] private GameObject _swordInHand;
+        [SerializeField, Tooltip("L'épée attachée dans le dos ou à la ceinture (optionnel)")] private GameObject _swordOnBack;
+
+        [Header("Lantern Settings")]
+        [SerializeField, Tooltip("La lanterne dans la main gauche")] private GameObject _lanternInHand;
+        [SerializeField, Tooltip("La lanterne accrochée à la ceinture/sac (optionnel)")] private GameObject _lanternOnBelt;
 
         [Header("Auto Jump Settings")]
         [SerializeField] private float _edgeCheckDistance = 0.5f;
@@ -25,7 +62,8 @@ namespace PuzzleDungeon.Player
         [Header("Climbing Settings")]
         [SerializeField] private KeyCode _climbKey = KeyCode.Space;
         [SerializeField] private float _climbCheckDistance = 1.0f;
-        [SerializeField] private float _climbMaxHeight = 2.5f;
+        [SerializeField, Tooltip("Hauteur max attrapable depuis le sol")] private float _climbMaxHeight = 2.5f;
+        [SerializeField, Tooltip("Hauteur max attrapable pendant un saut/chute")] private float _airClimbMaxHeight = 1.8f;
         [SerializeField] private float _climbLedgeDetectionHeight = 1.2f;
         [SerializeField] private float _climbHorizontalOffset = 0.6f;
         [SerializeField] private float _climbHangOffsetY = 1.8f;
@@ -38,18 +76,30 @@ namespace PuzzleDungeon.Player
         [SerializeField] private float _ledgeWaitTime = 0.2f;
         [SerializeField] private float _liftDuration = 0.8f;
         [SerializeField] private float _forwardDuration = 0.4f;
+        
+        [Header("Interaction Settings")]
+        [SerializeField] private float _pushStrength = 0.5f;
 
         private CharacterController _controller;
         private Vector3 _velocity;
         private Vector3 _currentMoveDirection;
         private Vector2 _inputDirection;
         private bool _isGrounded;
+        private float _pushTimer;
         private float _currentRunTime;
         private PlayerState _currentState = PlayerState.Idle;
+        private bool _isWeaponDrawn = false;
+        private float _sheatheTimer = 0f;
+        private bool _isLanternDrawn = false;
+        private float _fallPeakY;
+        private float _rollJumpBoostTimer = 0f; // Temps restant dans la fenêtre de boost de saut post-roulade
+        private float _rollCooldownTimer = 0f;  // Temps restant avant de pouvoir rouler à nouveau
 
         public PlayerState CurrentState => _currentState;
         public float MovementSpeed => new Vector2(_controller.velocity.x, _controller.velocity.z).magnitude;
         public bool IsLocked { get; set; }
+        public bool IsWeaponDrawn => _isWeaponDrawn;
+        public bool IsLanternDrawn => _isLanternDrawn;
 
         private void Awake()
         {
@@ -59,11 +109,34 @@ namespace PuzzleDungeon.Player
             
             // Sécurité : si la nouvelle variable est à 0 (valeur par défaut d'Unity), on lui donne une valeur correcte
             if (_climbHangOffsetY == 0f) _climbHangOffsetY = 1.8f;
+
+            _controller.stepOffset = _stepHeight;
+
+            // Par défaut, l'arme est rengainée au démarrage
+            if (_swordInHand != null) _swordInHand.SetActive(false);
+            if (_swordOnBack != null) _swordOnBack.SetActive(true);
+
+            // Par défaut, la lanterne est dégainée
+            _isLanternDrawn = true;
+            if (_lanternInHand != null) _lanternInHand.SetActive(true);
+            if (_lanternOnBelt != null) _lanternOnBelt.SetActive(false);
         }
 
         private void Update()
         {
+            // Permet l'ajustement en temps réel de la hauteur de marche depuis l'éditeur
+            if (_controller != null && Mathf.Abs(_controller.stepOffset - _stepHeight) > 0.001f)
+            {
+                _controller.stepOffset = _stepHeight;
+            }
+
             HandleGroundedStatus();
+
+            // Décrémenter les timers de roulade
+            if (_rollJumpBoostTimer > 0f)
+                _rollJumpBoostTimer -= Time.deltaTime;
+            if (_rollCooldownTimer > 0f)
+                _rollCooldownTimer -= Time.deltaTime;
             
             if (!IsLocked && _currentState != PlayerState.Climb)
             {
@@ -71,8 +144,10 @@ namespace PuzzleDungeon.Player
                 
                 if (_currentState != PlayerState.Climb)
                 {
+                    HandleRollInput(); // Roulade (si pas de rebord à attraper)
                     HandleMovement();
                     HandleAutoJump();
+                    HandleWeapon();
                 }
             }
             else if (IsLocked)
@@ -87,6 +162,9 @@ namespace PuzzleDungeon.Player
                 ApplyGravity();
                 UpdateState();
             }
+
+            // On vérifie l'état de la lanterne à chaque frame en fonction du PlayerState
+            HandleLantern();
         }
 
         private void HandleGroundedStatus()
@@ -129,8 +207,11 @@ namespace PuzzleDungeon.Player
                 if (_isGrounded) _currentRunTime += Time.deltaTime;
 
                 // Si on est en auto-saut, on utilise la vitesse calculée directement
-                // Sinon, on utilise la vitesse de mouvement normale
-                float speed = _isAutoJumpingToTarget ? 1f : (_isGrounded ? _moveSpeed : _moveSpeed * 0.8f); 
+                // Sinon, on utilise la vitesse normale — boostée pendant la roulade au sol,
+                // ou boostée en l'air si on a roulé juste avant de sauter.
+                float groundSpeed = _moveSpeed * (_currentState == PlayerState.Roll ? _rollSpeedMultiplier : 1f);
+                float airMultiplier = _jumpForwardSpeedMultiplier * (_rollJumpBoostTimer > 0f ? _rollJumpBoostMultiplier : 1f);
+                float speed = _isAutoJumpingToTarget ? 1f : (_isGrounded ? groundSpeed : _moveSpeed * airMultiplier);
                 _controller.Move(_currentMoveDirection * speed * Time.deltaTime);
 
                 // Rotation : on ne tourne que si on est au sol (ou très peu en l'air)
@@ -146,6 +227,106 @@ namespace PuzzleDungeon.Player
             }
         }
 
+        private void HandleWeapon()
+        {
+            if (Input.GetKeyDown(_attackKey))
+            {
+                if (!_isWeaponDrawn)
+                {
+                    DrawWeapon();
+                }
+                else
+                {
+                    // Logique d'attaque à venir
+                    Debug.Log("Attaque !");
+                    // On attaque, donc on reset le temps avant de rengainer
+                    _sheatheTimer = _autoSheatheDelay; 
+                }
+            }
+
+            // Gestion du timer de rengainement automatique
+            if (_isWeaponDrawn)
+            {
+                _sheatheTimer -= Time.deltaTime;
+                if (_sheatheTimer <= 0f)
+                {
+                    SheatheWeapon();
+                }
+            }
+        }
+
+        public void DrawWeapon()
+        {
+            if (_isWeaponDrawn) return;
+
+            _isWeaponDrawn = true;
+            _sheatheTimer = _autoSheatheDelay;
+            
+            OnDrawWeapon?.Invoke();
+            
+            // Switch basique des GameObjects (si vous n'utilisez pas d'Animation Events)
+            // if (_swordInHand != null) _swordInHand.SetActive(true);
+            if (_swordOnBack != null) _swordOnBack.SetActive(false);
+        }
+
+        public void SheatheWeapon()
+        {
+            if (!_isWeaponDrawn) return;
+
+            _isWeaponDrawn = false;
+            
+            OnSheatheWeapon?.Invoke();
+
+            // On force toujours le swap des GameObjects au rengainement
+            // (même si l'anim est skip, ex: saut, l'épée doit disparaître de la main)
+            if (_swordInHand != null) _swordInHand.SetActive(false);
+            if (_swordOnBack != null) _swordOnBack.SetActive(true);
+        }
+
+        // --- Méthodes appelées par les Animation Events ---
+        // Optionnel : À utiliser si vous configurez des événements dans vos animations
+        public void AnimEvent_GrabSword()
+        {
+            if (_swordInHand != null) _swordInHand.SetActive(true);
+            if (_swordOnBack != null) _swordOnBack.SetActive(false);
+        }
+
+        public void AnimEvent_StoreSword()
+        {
+            if (_swordInHand != null) _swordInHand.SetActive(false);
+            if (_swordOnBack != null) _swordOnBack.SetActive(true);
+        }
+
+        private void HandleLantern()
+        {
+            // La lanterne est dégainée quand on est au sol et libre de nos mains
+            // J'ai inclus Push et BigPush car pousser un gros bloc nécessite souvent les deux mains.
+            bool canHoldLantern = (_currentState == PlayerState.Idle || _currentState == PlayerState.Move);
+
+            if (canHoldLantern && !_isLanternDrawn)
+            {
+                DrawLantern();
+            }
+            else if (!canHoldLantern && _isLanternDrawn)
+            {
+                SheatheLantern();
+            }
+        }
+
+        public void DrawLantern()
+        {
+            _isLanternDrawn = true;
+            if (_lanternInHand != null) _lanternInHand.SetActive(true);
+            if (_lanternOnBelt != null) _lanternOnBelt.SetActive(false);
+        }
+
+        public void SheatheLantern()
+        {
+            _isLanternDrawn = false;
+            if (_lanternInHand != null) _lanternInHand.SetActive(false);
+            if (_lanternOnBelt != null) _lanternOnBelt.SetActive(true);
+        }
+
         private Vector3 _autoJumpTarget;
         private bool _isAutoJumpingToTarget;
 
@@ -153,6 +334,9 @@ namespace PuzzleDungeon.Player
         {
             if (!_isGrounded) return;
             
+            if (_isWeaponDrawn) SheatheWeapon(); // Force le rengainement
+            
+            _fallPeakY = transform.position.y;
             _velocity.y = Mathf.Sqrt(_jumpForce * -2f * _gravity);
             _currentState = PlayerState.Jump;
         }
@@ -310,6 +494,38 @@ namespace PuzzleDungeon.Player
             }
         }
 
+        private void HandleRollInput()
+        {
+            // La roulade ne se déclenche qu'au sol, sur pression de Space, et hors cooldown
+            if (!_isGrounded || !Input.GetKeyDown(_climbKey)) return;
+            if (_currentState == PlayerState.HardLand || _currentState == PlayerState.Push || _currentState == PlayerState.BigPush) return;
+            if (_rollCooldownTimer > 0f) return;
+
+            // La roulade s'effectue dans la direction courante (ou vers l'avant si on est à l'arrêt)
+            Vector3 rollDirection = _currentMoveDirection.magnitude >= 0.1f ? _currentMoveDirection : transform.forward;
+            StartCoroutine(RollRoutine(rollDirection));
+        }
+
+        private System.Collections.IEnumerator RollRoutine(Vector3 direction)
+        {
+            _currentState = PlayerState.Roll;
+
+            if (_isWeaponDrawn) SheatheWeapon();
+
+            // On fixe la direction de roulade dans _currentMoveDirection pour que
+            // HandleMovement applique le boost de vitesse dans cette direction.
+            // Le joueur peut néanmoins ré-orienter légèrement en cours de roulade.
+            _currentMoveDirection = direction;
+
+            yield return new WaitForSeconds(_rollDuration);
+
+            // Activer la fenêtre de boost pour le prochain saut et démarrer le cooldown
+            _rollJumpBoostTimer = _rollJumpBoostWindow;
+            _rollCooldownTimer = _rollCooldown;
+
+            _currentState = PlayerState.Idle;
+        }
+
         private bool CheckForClimbableLedge(out Vector3 targetPos, out Vector3 wallNormal)
         {
             targetPos = Vector3.zero;
@@ -317,22 +533,25 @@ namespace PuzzleDungeon.Player
             Vector3 direction = transform.forward;
             Vector3 flatDirection = new Vector3(direction.x, 0, direction.z).normalized;
             
+            // On sélectionne la hauteur max selon si on est au sol ou en l'air
+            float currentMaxHeight = _isGrounded ? _climbMaxHeight : _airClimbMaxHeight;
+            
             // On teste plusieurs distances en avant du joueur pour trouver le rebord
             float[] forwardDistances = { 0.5f, 0.75f, 1.0f };
             bool foundLedge = false;
             
             foreach (float dist in forwardDistances)
             {
-                // On part du haut (hauteur max) et on descend directement
-                Vector3 checkPoint = transform.position + Vector3.up * _climbMaxHeight + flatDirection * dist;
+                // On part du haut (hauteur max actuelle) et on descend directement
+                Vector3 checkPoint = transform.position + Vector3.up * currentMaxHeight + flatDirection * dist;
                 
-                if (Physics.Raycast(checkPoint, Vector3.down, out RaycastHit ledgeHit, _climbMaxHeight + 0.5f, _climbableLayer))
+                if (Physics.Raycast(checkPoint, Vector3.down, out RaycastHit ledgeHit, currentMaxHeight + 0.5f, _climbableLayer))
                 {
                     foundLedge = true;
                     float height = ledgeHit.point.y - transform.position.y;
                     
                     // Si on a trouvé un rebord à une hauteur valide
-                    if (height > 0.5f && height <= _climbMaxHeight)
+                    if (height > 0.5f && height <= currentMaxHeight)
                     {
                         // On vérifie qu'il n'y a pas de plafond au-dessus du rebord pour se tenir debout
                         if (!Physics.Raycast(ledgeHit.point + Vector3.up * 0.1f, Vector3.up, 1.8f, _groundLayer | _climbableLayer))
@@ -358,6 +577,8 @@ namespace PuzzleDungeon.Player
 
         private System.Collections.IEnumerator ClimbRoutine(Vector3 targetPos, Vector3 wallNormal)
         {
+            if (_isWeaponDrawn) SheatheWeapon(); // Force le rengainement
+            
             _currentState = PlayerState.Climb;
             _velocity = Vector3.zero;
             
@@ -439,26 +660,51 @@ namespace PuzzleDungeon.Player
         private void ApplyGravity()
         {
             _velocity.y += _gravity * Time.deltaTime;
-            _controller.Move(_velocity * Time.deltaTime);
+            if (_controller.enabled)
+            {
+                _controller.Move(_velocity * Time.deltaTime);
+            }
         }
 
         private void UpdateState()
         {
+            if (_currentState == PlayerState.Climb || _currentState == PlayerState.BigPush || _currentState == PlayerState.HardLand || _currentState == PlayerState.Roll) return;
+
             if (_isGrounded)
             {
-                // Si on vient de tomber ou de sauter et qu'on touche le sol, on réinitialise le temps de course
+                // Si on vient de tomber ou de sauter et qu'on touche le sol
                 if (_currentState == PlayerState.Fall || _currentState == PlayerState.Jump)
                 {
                     _currentRunTime = 0f;
+
+                    // Vérifier si la chute est assez haute pour déclencher la roulade
+                    float fallDistance = _fallPeakY - transform.position.y;
+                    if (fallDistance >= _hardLandHeightThreshold)
+                    {
+                        StartCoroutine(HardLandRoutine());
+                        return;
+                    }
                 }
 
-                if (_inputDirection.magnitude > 0.1f)
+                if (_pushTimer > 0)
+                {
+                    _currentState = PlayerState.Push;
+                    _pushTimer -= Time.deltaTime;
+                }
+                else if (_inputDirection.magnitude > 0.1f)
                     _currentState = PlayerState.Move;
                 else
                     _currentState = PlayerState.Idle;
             }
             else
             {
+                // Initialiser le suivi de la hauteur max quand on quitte le sol (sans saut)
+                if (_currentState != PlayerState.Jump && _currentState != PlayerState.Fall)
+                {
+                    _fallPeakY = transform.position.y;
+                }
+                _fallPeakY = Mathf.Max(_fallPeakY, transform.position.y);
+
                 if (_velocity.y > 0)
                     _currentState = PlayerState.Jump;
                 else
@@ -468,20 +714,41 @@ namespace PuzzleDungeon.Player
 
         private void OnDrawGizmosSelected()
         {
+            // Visualisation de la hauteur de marche (Step Height)
+            Gizmos.color = new Color(1f, 0.5f, 0f, 0.8f); // Orange
+            Vector3 feetOrigin = transform.position;
+            // On décale le gizmo de step height légèrement vers l'avant (au bord du radius)
+            float radius = _controller != null ? _controller.radius : 0.3f;
+            Vector3 stepBasePos = feetOrigin + transform.forward * radius;
+            Vector3 stepTopPos = stepBasePos + Vector3.up * _stepHeight;
+            
+            // Ligne verticale représentant la hauteur
+            Gizmos.DrawLine(stepBasePos, stepTopPos);
+            // Petit plateau pour bien voir la limite
+            Gizmos.DrawWireCube(stepTopPos + transform.forward * 0.1f, new Vector3(0.4f, 0.02f, 0.2f));
+
             // Visualize the edge check ray
             Vector3 moveDirection = transform.forward;
             Vector3 rayStart = transform.position + Vector3.up * _edgeCheckHeight + moveDirection * _edgeCheckDistance;
             Gizmos.color = Color.red;
             Gizmos.DrawLine(rayStart, rayStart + Vector3.down * 1.0f);
 
-            // Visualize climb detection
-            Gizmos.color = Color.blue;
-            Vector3 origin = transform.position + Vector3.up * 0.5f;
-            Gizmos.DrawRay(origin, transform.forward * _climbCheckDistance);
+            // Visualize climb detection (New Top-Down Raycasts)
+            Vector3 flatDirection = new Vector3(moveDirection.x, 0, moveDirection.z).normalized;
+            float[] forwardDistances = { 0.5f, 0.75f, 1.0f };
             
-            Gizmos.color = Color.cyan;
-            Vector3 highOrigin = transform.position + Vector3.up * _climbMaxHeight;
-            Gizmos.DrawRay(highOrigin, transform.forward * _climbCheckDistance);
+            foreach (float dist in forwardDistances)
+            {
+                // Lignes bleues pour la grimpe depuis le sol
+                Gizmos.color = Color.blue;
+                Vector3 groundCheckPoint = transform.position + Vector3.up * _climbMaxHeight + flatDirection * dist;
+                Gizmos.DrawLine(groundCheckPoint, groundCheckPoint + Vector3.down * (_climbMaxHeight + 0.5f));
+
+                // Lignes cyan pour la grimpe en l'air (saut)
+                Gizmos.color = Color.cyan;
+                Vector3 airCheckPoint = transform.position + Vector3.up * _airClimbMaxHeight + flatDirection * dist;
+                Gizmos.DrawLine(airCheckPoint, airCheckPoint + Vector3.down * (_airClimbMaxHeight + 0.5f));
+            }
 
             // Visualisation du point cible détecté
             if (CheckForClimbableLedge(out Vector3 target, out Vector3 wallNormal))
@@ -509,7 +776,7 @@ namespace PuzzleDungeon.Player
         // --- Interaction avec les blocs ---
         private void OnControllerColliderHit(ControllerColliderHit hit)
         {
-            if (_currentState == PlayerState.Climb) return;
+            if (_currentState == PlayerState.Climb || _currentState == PlayerState.BigPush) return;
 
             Rigidbody body = hit.collider.attachedRigidbody;
 
@@ -518,6 +785,9 @@ namespace PuzzleDungeon.Player
 
             // On ne pousse pas vers le bas
             if (hit.moveDirection.y < -0.3f) return;
+
+            // On rengaine l'épée automatiquement car le joueur a besoin de ses mains
+            if (_isWeaponDrawn) SheatheWeapon();
 
             // Calcul de la direction basée sur la position relative (Joueur -> Bloc)
             // Cela garantit qu'on pousse le bloc "loin de soi" sur l'axe le plus logique
@@ -544,8 +814,65 @@ namespace PuzzleDungeon.Player
             pushDir.y = 0; // Sécurité
             pushDir.Normalize();
 
+            // Calcul de la vitesse de poussée
+            float finalPushSpeed = _moveSpeed * _pushStrength;
+            
+            // Si le bloc a une résistance spécifique, on l'applique
+            if (hit.collider.TryGetComponent(out PushableBlock block))
+            {
+                // Plus la résistance est haute, plus c'est lent (vitesse / résistance)
+                finalPushSpeed /= block.PushResistance;
+            }
+
             // On applique la force sur l'axe choisi
-            body.linearVelocity = pushDir * (_moveSpeed * 0.5f);
+            body.linearVelocity = pushDir * finalPushSpeed;
+
+            // Détection de bord pour le BigPush
+            if (block != null && block.IsNearEdge(pushDir))
+            {
+                StartCoroutine(BigPushRoutine(block, pushDir));
+            }
+            else
+            {
+                // On active le timer de poussée
+                _pushTimer = 0.15f;
+            }
         }
+
+        private System.Collections.IEnumerator BigPushRoutine(PushableBlock block, Vector3 direction)
+        {
+            _currentState = PlayerState.BigPush;
+            IsLocked = true;
+
+            // On ne touche plus à la position/rotation (plus de magnétisme)
+            
+            // Pause pour l'anticipation de l'animation bigPushAnim
+            yield return new WaitForSeconds(0.4f);
+
+            // Le coup puissant
+            if (block != null)
+            {
+                float calculatedForce = block.GetBigPushForce(direction);
+                block.Push(direction * calculatedForce);
+            }
+
+            // Temps de recovery après le coup
+            yield return new WaitForSeconds(0.6f);
+
+            IsLocked = false;
+            _currentState = PlayerState.Idle;
+        }
+
+        private System.Collections.IEnumerator HardLandRoutine()
+        {
+            _currentState = PlayerState.HardLand;
+
+            yield return new WaitForSeconds(_hardLandDuration);
+
+            _currentState = PlayerState.Idle;
+        }
+
+        // Propriété publique pour savoir si le bonus de roulade est actif (utile pour debug ou UI)
+        public bool HasRollJumpBoost => _rollJumpBoostTimer > 0f;
     }
 }

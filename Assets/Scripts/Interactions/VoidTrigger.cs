@@ -33,7 +33,22 @@ namespace PuzzleDungeon.Interactions
         {
             if (other.TryGetComponent(out PlayerController player))
             {
+                // 1. Téléporter d'abord au bord (spawn local du VoidTrigger)
                 RespawnPlayer(player);
+
+                // 2. Appliquer les dégâts (déclenche l'animation GetHitVoid)
+                if (other.TryGetComponent(out PlayerHealth health))
+                {
+                    health.TakeDamage(1, DamageType.Void);
+
+                    // Si le joueur a survécu, on lance la séquence de blocage manuellement.
+                    // Si le joueur est mort, PlayerHealth.Respawn() l'a déjà téléporté
+                    // au vrai Checkpoint et a lancé la séquence en interne.
+                    if (!health.IsRespawning)
+                    {
+                        health.StartRespawnSequence();
+                    }
+                }
             }
         }
 

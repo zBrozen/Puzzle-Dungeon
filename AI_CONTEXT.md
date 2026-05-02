@@ -31,6 +31,16 @@ Le gameplay repose sur la résolution de puzzles spatiaux et logiques, avec ou s
    - Un objet (projectile) que le joueur peut lancer et contrôler à distance.
    - Dédié à des zones de parcours spécifiques (obstacles, passages étroits) pour aller frapper une cible inaccessible et valider une énigme.
 
+34: 
+## ⚔️ Système de Combat
+- **Santé du Joueur :** Le joueur possède 3 cœurs (peut encaisser 3 dégâts avant de réapparaître au dernier point de sauvegarde).
+- **Attaque et Défense :** Le joueur utilise son épée pour attaquer et se défendre (nécessite des animations d'attaque).
+- **Ennemis :**
+  - **Comportement :** Les ennemis disposent d'un système de déplacement élaboré (comportement non basique) pour poursuivre et attaquer le joueur.
+  - **Apparition (Spawn Points) :** 
+    - *Événementielle :* Les ennemis peuvent émerger du sol (façon zombies) déclenchés par un événement.
+    - *Statique :* Les ennemis peuvent être déjà présents dans la salle lors de l'arrivée du joueur.
+
 ## ⚙️ Objectif Technique Majeur : Variabilité des Runs (JSON)
 - **Génération Data-Driven :** Le jeu doit permettre à des fichiers JSON de configurer l'accessibilité des énigmes lors d'une session (run). 
 - **Objectif :** Éviter que les joueurs aient exactement le même parcours. 
