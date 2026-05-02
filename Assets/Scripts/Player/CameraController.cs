@@ -208,6 +208,16 @@ namespace PuzzleDungeon.Player
             _currentMode = CameraMode.Orbit;
         }
 
+        public void SnapToTarget()
+        {
+            if (_target != null)
+            {
+                _smoothPosition = _target.position + _offset;
+                _currentVelocity = Vector3.zero;
+                _transitionTimer = 0f; // Annuler toute transition en cours
+            }
+        }
+
         private void CalculateCameraPosition()
         {
             Vector3 targetPos;
@@ -216,8 +226,35 @@ namespace PuzzleDungeon.Player
             // === CALCUL DE LA DESTINATION ===
             if (_currentMode == CameraMode.DirectFollow)
             {
-                targetPos = _target.position - _target.forward * _distance + _target.up * _offset.y;
+                Vector3 desiredPos = _target.position - _target.forward * _distance + _target.up * _offset.y;
                 targetRot = Quaternion.LookRotation(_target.forward, _target.up);
+
+                // --- SÉCURITÉ COLLISIONS (DirectFollow) ---
+                Vector3 headPos = _target.position; // On part du centre de la cible (le scarabée)
+                Vector3 toCameraDir = desiredPos - headPos;
+                float toCameraDist = toCameraDir.magnitude;
+                
+                targetPos = desiredPos;
+
+                if (toCameraDist > 0.01f)
+                {
+                    RaycastHit[] hits = Physics.SphereCastAll(headPos, _collisionRadius, toCameraDir.normalized, toCameraDist, _collisionLayers);
+                    System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
+
+                    Collider originalTargetCollider = _originalTarget != null ? _originalTarget.GetComponentInChildren<Collider>() : null;
+
+                    foreach (var h in hits)
+                    {
+                        // On ignore la cible actuelle (ex: le scarabée)
+                        if (h.collider.transform.IsChildOf(_target)) continue;
+                        
+                        // On ignore la cible originale (le joueur)
+                        if (originalTargetCollider != null && (h.collider == originalTargetCollider || h.collider.transform.IsChildOf(_originalTarget))) continue;
+
+                        targetPos = headPos + toCameraDir.normalized * Mathf.Max(h.distance, _minCollisionDistance);
+                        break;
+                    }
+                }
             }
             else // ORBITE
             {

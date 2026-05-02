@@ -18,6 +18,8 @@ namespace PuzzleDungeon.Player
         [SerializeField] private float _edgeCheckHeight = 0.1f;
         [SerializeField] private float _minRunTimeToJump = 0.3f;
         [SerializeField] private float _jumpObstacleCheckDistance = 1.0f;
+        [SerializeField, Range(0.1f, 1.5f), Tooltip("Multiplier for the player radius when checking for gaps. Higher = ignores larger gaps.")] 
+        private float _jumpGapCheckRadiusMultiplier = 0.8f;
         [SerializeField] private LayerMask _groundLayer;
         
         [Header("Climbing Settings")]
@@ -177,6 +179,26 @@ namespace PuzzleDungeon.Player
             _currentMoveDirection = diff / timeToLand; 
         }
 
+        public void Teleport(Vector3 newPosition, Quaternion newRotation)
+        {
+            // Il faut désactiver le CharacterController pour modifier le transform directement
+            _controller.enabled = false;
+            transform.position = newPosition;
+            transform.rotation = newRotation;
+            Physics.SyncTransforms(); // Assure que la physique est mise à jour instantanément
+            _velocity = Vector3.zero;
+            _currentMoveDirection = Vector3.zero;
+            _isAutoJumpingToTarget = false;
+            _currentState = PlayerState.Idle;
+            _controller.enabled = true;
+
+            // Fait sauter la caméra instantanément à la nouvelle position
+            if (Camera.main != null && Camera.main.TryGetComponent(out CameraController cam))
+            {
+                cam.SnapToTarget();
+            }
+        }
+
         private void HandleAutoJump()
         {
             if (_isAutoJumpingToTarget)
@@ -203,30 +225,67 @@ namespace PuzzleDungeon.Player
             }
 
             // Auto jump logic: check if there's no ground ahead while moving
-            // Conditions: 
-            // 1. Must be grounded
-            // 2. Must not be already jumping
-            // 3. Must have been running for a minimum duration
-            // 4. Player must be actively pushing the stick (input magnitude > 0.1)
             if (!_isGrounded || CurrentState == PlayerState.Jump || _currentRunTime < _minRunTimeToJump || _inputDirection.magnitude < 0.1f) return;
 
             Vector3 moveDirection = new Vector3(_controller.velocity.x, 0, _controller.velocity.z).normalized;
             if (moveDirection.magnitude < 0.1f) return;
 
-            // Optional: Ensure moveDirection is somewhat aligned with input direction to avoid inertia jumps
             if (Vector3.Dot(moveDirection, _currentMoveDirection) < 0.5f) return;
 
-            // Safety check: Don't jump if there's a wall immediately in front of us
-            Vector3 obstacleCheckOrigin = transform.position + Vector3.up * 0.5f; // Check from waist height
-            // We check for any obstacles on the default, ground or climbable layers
-            if (Physics.Raycast(obstacleCheckOrigin, moveDirection, _jumpObstacleCheckDistance, _groundLayer | _climbableLayer | 1)) return;
+            // --- GESTION AMELIOREE DES MARCHES ET DU VIDE ---
+            LayerMask obstacleMask = _groundLayer | _climbableLayer | 1;
 
-            // Cast ray slightly ahead and down
-            Vector3 rayStart = transform.position + Vector3.up * _edgeCheckHeight + moveDirection * _edgeCheckDistance;
+            // 1. Vérifier si un obstacle (mur, bloc, grosse marche) est devant nous.
+            // On utilise SphereCastAll pour détecter les murs même en diagonale, tout en ignorant le sol.
+            Vector3 waistOrigin = transform.position + Vector3.up * 0.8f; 
+            float wallCheckRadius = _controller.radius * 0.8f;
             
-            if (!Physics.Raycast(rayStart, Vector3.down, 1.0f, _groundLayer))
+            RaycastHit[] wallHits = Physics.SphereCastAll(waistOrigin, wallCheckRadius, moveDirection, _jumpObstacleCheckDistance, obstacleMask);
+            foreach (var hit in wallHits)
             {
-                // No ground ahead! Trigger jump
+                // On ignore les collisions avec soi-même (distance 0) et le sol/pentes douces (normale vers le haut)
+                if (hit.distance > 0.01f && hit.normal.y < 0.5f)
+                {
+                    return; // Mur ou gros bloc détecté -> pas d'auto-saut, le CharacterController va buter contre.
+                }
+            }
+
+            // 2. Évaluer la présence d'un vide (trou) devant nous
+            // On utilise un Raycast tombant de haut pour éviter qu'il ne commence "à l'intérieur" d'une petite marche
+            float castHeight = 1.5f; 
+            Vector3 rayStart = transform.position + Vector3.up * castHeight + moveDirection * _edgeCheckDistance;
+            
+            bool isGap = false;
+            
+            if (Physics.Raycast(rayStart, Vector3.down, out RaycastHit groundHit, castHeight + 1.0f, obstacleMask))
+            {
+                float heightDiff = groundHit.point.y - transform.position.y;
+                // On ne saute que si la différence de hauteur est importante (gouffre)
+                if (heightDiff < -0.8f) 
+                {
+                    isGap = true;
+                }
+            }
+            else
+            {
+                isGap = true; // Aucun sol touché (gouffre très profond)
+            }
+
+            // 3. Double vérification pour ignorer les micro-fissures (ex: planches d'un pont)
+            if (isGap)
+            {
+                Vector3 rayStartBehind = rayStart - moveDirection * 0.2f; // On recule légèrement le rayon
+                if (Physics.Raycast(rayStartBehind, Vector3.down, out RaycastHit hitBehind, castHeight + 1.0f, obstacleMask))
+                {
+                    if (hitBehind.point.y >= transform.position.y - 0.8f)
+                    {
+                        isGap = false; // C'était juste une micro-fissure, le sol plat continue derrière
+                    }
+                }
+            }
+
+            if (isGap)
+            {
                 TriggerJump();
             }
         }
@@ -254,41 +313,46 @@ namespace PuzzleDungeon.Player
         private bool CheckForClimbableLedge(out Vector3 targetPos, out Vector3 wallNormal)
         {
             targetPos = Vector3.zero;
-            wallNormal = Vector3.zero;
+            wallNormal = -transform.forward; // Normale par défaut si on ne trouve pas la face du mur
             Vector3 direction = transform.forward;
+            Vector3 flatDirection = new Vector3(direction.x, 0, direction.z).normalized;
             
-            // On recule l'origine du SphereCast pour être sûr de ne pas commencer à l'intérieur du collider du mur
-            Vector3 origin = transform.position + Vector3.up * 0.5f - direction * 0.3f; 
-
-            // 1. Détection du mur avec un SphereCast pour être plus tolérant sur les sauts en biais
-            if (Physics.SphereCast(origin, 0.3f, direction, out RaycastHit wallHit, _climbCheckDistance + 0.3f, _climbableLayer))
+            // On teste plusieurs distances en avant du joueur pour trouver le rebord
+            float[] forwardDistances = { 0.5f, 0.75f, 1.0f };
+            bool foundLedge = false;
+            
+            foreach (float dist in forwardDistances)
             {
-                wallNormal = wallHit.normal;
-
-                // 2. Vérifier s'il y a de la place au-dessus
-                Vector3 highOrigin = transform.position + Vector3.up * _climbMaxHeight - direction * 0.3f;
-                if (!Physics.SphereCast(highOrigin, 0.3f, direction, out _, _climbCheckDistance + 0.3f, _climbableLayer | _groundLayer))
+                // On part du haut (hauteur max) et on descend directement
+                Vector3 checkPoint = transform.position + Vector3.up * _climbMaxHeight + flatDirection * dist;
+                
+                if (Physics.Raycast(checkPoint, Vector3.down, out RaycastHit ledgeHit, _climbMaxHeight + 0.5f, _climbableLayer))
                 {
-                    // 3. Trouver le haut exact du rebord (uniquement sur le layer climbable)
-                    // On lance un rayon vers le bas depuis un point au-dessus de la cible potentielle
-                    // Utiliser la normale du mur pour garantir qu'on sonde bien "à l'intérieur" de la corniche
-                    Vector3 inwardDir = -wallHit.normal;
-                    inwardDir.y = 0;
-                    inwardDir.Normalize();
+                    foundLedge = true;
+                    float height = ledgeHit.point.y - transform.position.y;
                     
-                    Vector3 checkPoint = wallHit.point + inwardDir * 0.35f + Vector3.up * (_climbMaxHeight - 0.5f);
-                    if (Physics.Raycast(checkPoint, Vector3.down, out RaycastHit ledgeHit, _climbMaxHeight, _climbableLayer))
+                    // Si on a trouvé un rebord à une hauteur valide
+                    if (height > 0.5f && height <= _climbMaxHeight)
                     {
-                        // On vérifie que la hauteur est grimpable (pas trop haut, pas trop bas)
-                        float height = ledgeHit.point.y - transform.position.y;
-                        if (height > 0.5f && height <= _climbMaxHeight)
+                        // On vérifie qu'il n'y a pas de plafond au-dessus du rebord pour se tenir debout
+                        if (!Physics.Raycast(ledgeHit.point + Vector3.up * 0.1f, Vector3.up, 1.8f, _groundLayer | _climbableLayer))
                         {
                             targetPos = ledgeHit.point;
+                            
+                            // On cherche la normale exacte du mur pour que le personnage s'aligne bien
+                            // On tire un rayon depuis le rebord vers le joueur (légèrement en dessous du rebord)
+                            Vector3 wallCheckStart = ledgeHit.point + Vector3.down * 0.2f + flatDirection * 0.2f;
+                            if (Physics.Raycast(wallCheckStart, -flatDirection, out RaycastHit wallHit, 1.0f, _climbableLayer))
+                            {
+                                wallNormal = wallHit.normal;
+                            }
+                            
                             return true;
                         }
                     }
                 }
             }
+            
             return false;
         }
 
@@ -457,19 +521,28 @@ namespace PuzzleDungeon.Player
 
             // Calcul de la direction basée sur la position relative (Joueur -> Bloc)
             // Cela garantit qu'on pousse le bloc "loin de soi" sur l'axe le plus logique
-            Vector3 directionToBlock = hit.collider.bounds.center - transform.position;
+            Vector3 directionToBlock = hit.transform.position - transform.position;
             directionToBlock.y = 0; // On ignore la hauteur
 
-            Vector3 pushDir = Vector3.zero;
+            // Conversion de la direction en espace local du bloc pour respecter sa rotation
+            Vector3 localDir = hit.transform.InverseTransformDirection(directionToBlock);
 
-            if (Mathf.Abs(directionToBlock.x) > Mathf.Abs(directionToBlock.z))
+            Vector3 localPushDir = Vector3.zero;
+
+            // On trouve l'axe local le plus fort
+            if (Mathf.Abs(localDir.x) > Mathf.Abs(localDir.z))
             {
-                pushDir = new Vector3(directionToBlock.x > 0 ? 1 : -1, 0, 0);
+                localPushDir = new Vector3(localDir.x > 0 ? 1 : -1, 0, 0);
             }
             else
             {
-                pushDir = new Vector3(0, 0, directionToBlock.z > 0 ? 1 : -1);
+                localPushDir = new Vector3(0, 0, localDir.z > 0 ? 1 : -1);
             }
+
+            // On repasse en espace global
+            Vector3 pushDir = hit.transform.TransformDirection(localPushDir);
+            pushDir.y = 0; // Sécurité
+            pushDir.Normalize();
 
             // On applique la force sur l'axe choisi
             body.linearVelocity = pushDir * (_moveSpeed * 0.5f);

@@ -51,7 +51,11 @@ namespace PuzzleDungeon.Player
                 case LauncherState.Idle:
                     if (Input.GetKeyDown(_launchKey) && Time.time > _lastLaunchTime + _cooldown)
                     {
-                        StartAiming();
+                        if (_playerController.CurrentState == PlayerController.PlayerState.Idle || 
+                            _playerController.CurrentState == PlayerController.PlayerState.Move)
+                        {
+                            StartAiming();
+                        }
                     }
                     break;
 

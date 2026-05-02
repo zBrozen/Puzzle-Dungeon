@@ -6,6 +6,17 @@ Ce document sert de référence pour les intelligences artificielles (IA) afin d
 Jeu d'énigmes dans un environnement 3D fortement inspiré du **Donjon de la Tour des Cieux (Sky Keep)** de *The Legend of Zelda: Skyward Sword*. 
 Le gameplay repose sur la résolution de puzzles spatiaux et logiques, avec ou sans l'aide d'objets, pour progresser dans le donjon.
 
+## 🗺️ Structure et Progression (Level Design)
+- **Objectif de Scope :** Environ 2 énigmes par salle (pour garder un scope de développement réaliste et un bon rythme).
+- **Architecture :** Le donjon est composé de 3 grandes salles principales, ainsi que de plus petites salles "énigmes" permettant d'obtenir des accès ou des récompenses.
+- **Inventaire et Progression :**
+  - **Objets classiques :** Des clés (pour ouvrir les portes verrouillées). Le **Scarabée** (pour activer des mécanismes à distance) s'obtient plutôt vers le milieu du jeu.
+  - **Pièces de Taquin :** Il y a 6 pièces au total pour manipuler l'agencement des 3 salles. Chaque salle inclut 1 pièce de base, il y a donc 3 pièces supplémentaires à trouver en résolvant des énigmes. Ces pièces ou l'accès à la stèle s'obtiennent également plus tard (milieu de partie), et non dès le début.
+- **Séquence d'Introduction (Tutoriel) :**
+  - **Parcours d'approche :** Un chemin simple où le joueur peut tomber, introduisant le déplacement.
+  - **Tuto Bloc :** Le joueur apprend à pousser un bloc pour s'en servir de plateforme/pont afin d'atteindre la première grande salle.
+  - **Première Grande Salle :** Le joueur ramène ce bloc dans la salle pour le placer sur un bouton pression et ouvrir une porte (le poids du joueur n'étant pas idéal pour traverser la salle pendant que la porte est ouverte).
+
 ## 🧩 Mécaniques et Énigmes Actuelles
 1. **Puzzle Principal (Manipulation du donjon) :** 
    - Le donjon possède une architecture verticale composée de seulement 3 salles.
