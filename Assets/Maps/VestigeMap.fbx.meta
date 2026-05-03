@@ -3,7 +3,227 @@ guid: dff1afbc89f7c074991ce6d6e23e85da
 ModelImporter:
   serializedVersion: 24200
   internalIDToNameTable: []
-  externalObjects: {}
+  externalObjects:
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Bars
+    second: {fileID: 2100000, guid: 0a6b29ec479099045999b6ac404ff48b, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: DirtRoad
+    second: {fileID: 2100000, guid: def20d29a7256a84c91facb1d2559ddf, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Door_Frame.001
+    second: {fileID: 2100000, guid: ba8075fa99861274b9d87ebaa69f3401, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Material
+    second: {fileID: 2100000, guid: e3c206ce08c3554439cf008cbf282e93, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Material.001
+    second: {fileID: 2100000, guid: 8b5807bf376dbea4e8bd53fb1a652d53, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Material.002
+    second: {fileID: 2100000, guid: 930b3810cc0acca4ea9e74e49f22e5be, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Material.003
+    second: {fileID: 2100000, guid: fb8fd479582e7c24cbbff5dbd93deefe, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Material.004
+    second: {fileID: 2100000, guid: 2a30d1088972d89419059670c3114d24, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Material.005
+    second: {fileID: 2100000, guid: a5a4e0acba20fb7499dea66286d70e6c, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Material.007
+    second: {fileID: 2100000, guid: 0db041970d487da4590602169f785070, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Material.008
+    second: {fileID: 2100000, guid: f6cf8f1d790624d488d9314b2ba6aa05, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Material.009
+    second: {fileID: 2100000, guid: e8002cc9e575941498c14d6beebf83b6, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Material.010
+    second: {fileID: 2100000, guid: ce7b4c7525d0e394795bb521dc3c0a6a, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Material.011
+    second: {fileID: 2100000, guid: b2e5e064f43c68b4686be97bce182d82, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Material.012
+    second: {fileID: 2100000, guid: 003e6490848667d4ab42f0963e4e19d8, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Material.013
+    second: {fileID: 2100000, guid: 572bb5289f7bde14fba04c80c81d4251, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: MetalCorrodedHeavy001_2K
+    second: {fileID: 2100000, guid: 20b46061f78d2404e9b415c52f651a58, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Wall1
+    second: {fileID: 2100000, guid: c269af935d02bae4dbc4d15ae31ae12d, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: WallBricks.001
+    second: {fileID: 2100000, guid: 61673cad1f9566d479c38b1b849e95a1, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: WallBricks.002
+    second: {fileID: 2100000, guid: 61d6695a43743db4bb40f9976924bb35, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: WallBricks.004
+    second: {fileID: 2100000, guid: 0abeea121feb37d46b98b7f823d989f5, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: WallBricks.005
+    second: {fileID: 2100000, guid: 4c80b7c0599d9b645908cc92b8f0bf28, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: bois
+    second: {fileID: 2100000, guid: f174f70502a38844ea07c534bf046153, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: bois.001
+    second: {fileID: 2100000, guid: 6fac2b8d3231a624fb6554d4705df3ad, type: 2}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: 360_F_576665130_69Ox03BCGT2C7oOJgvB4FoyA17XQup49
+    second: {fileID: 2800000, guid: 3d4d0bf6431afa149a383fb3bdfe88b3, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: MetalCorrodedHeavy001_COL_2K_METALNESS
+    second: {fileID: 2800000, guid: 5ee0cf0907b1f384d85725929a252c53, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: MetalCorrodedHeavy001_NRM16_2K_METALNESS
+    second: {fileID: 2800000, guid: cea92e8d3033091469679657d82aea57, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Poliigon_ConcreteFloorPoured_7656_BaseColor
+    second: {fileID: 2800000, guid: a15770f49bda2684bb043b3c0c7ecee5, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Poliigon_ConcreteFloorPoured_7656_Metallic
+    second: {fileID: 2800000, guid: f045e00f360aab94ab227375af64f0ea, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Poliigon_ConcreteFloorPoured_7656_Normal
+    second: {fileID: 2800000, guid: e36ed3585dafe3741832d1723ec3e919, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: RammedEarth018_DISP16_2K_METALNESS
+    second: {fileID: 2800000, guid: c28aa877582dfaa45b8f43500d9a0912, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: RammedEarth018_NRM_2K_METALNESS
+    second: {fileID: 2800000, guid: aeb4cd80ed139da40bbf25113df1ced4, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: drawing-cartoon-art-of-wood-texture-pattern-landscape-eps10-wide-template-background-illustration-free-vector
+    second: {fileID: 2800000, guid: 54505286e4e872f4f80f1eb933d22b42, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: floor 19
+    second: {fileID: 2800000, guid: 1e0de4ec091341e4d88af259047d5556, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: floor 19_normal
+    second: {fileID: 2800000, guid: 76136052775da92418ab9ee4a30def45, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: istockphoto-1377965859-612x612
+    second: {fileID: 2800000, guid: 3eeafc636381cc04e8a1c1cbd4127e6f, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: istockphoto-1377965859-612x612_normal
+    second: {fileID: 2800000, guid: fbdf6122e0c712f40a20b2c751a2ee39, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: road_rocks_blocky
+    second: {fileID: 2800000, guid: 7867a468ccb5f8d4c9751359bc536c4a, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: road_rocks_blocky_normal
+    second: {fileID: 2800000, guid: 94073a437dd9c98469550365d09f2757, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: rubber_tiles_diff_2k
+    second: {fileID: 2800000, guid: 109e3a1da5164834da58ab905f0156c8, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: rubber_tiles_nor_gl_2k
+    second: {fileID: 2800000, guid: dfa9a1d49c1dc8749babedca3fd5cbaa, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: scratched_metal_texture_by_furiion52_d5ncqz6-fullview
+    second: {fileID: 2800000, guid: cec3fa812f20e2942b7d392915670014, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: stone-tiles-texture-cartoon-style_1639-26613
+    second: {fileID: 2800000, guid: ebd42e47b0283ed4fa2602472494a718, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: stone-tiles-texture-cartoon-style_1639-26613_normal
+    second: {fileID: 2800000, guid: 5daacaaef04fe314fa2c4ff2a317bbd5, type: 3}
   materials:
     materialImportMode: 2
     materialName: 0

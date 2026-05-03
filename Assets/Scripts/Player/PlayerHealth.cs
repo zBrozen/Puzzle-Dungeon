@@ -25,15 +25,19 @@ namespace PuzzleDungeon.Player
         [SerializeField, Tooltip("Durée du blocage pendant l'animation de réapparition")]
         private float _respawnAnimDuration = 2f;
 
-        [Header("Visual Settings")]
         [SerializeField, Tooltip("Racine du modèle 3D pour le clignotement. Si vide, cherchera automatiquement.")]
         private Transform _visualRoot;
+
+        [Header("Damage Visuals")]
+        [SerializeField] private Color _flashColor = Color.red;
+        [SerializeField] private float _flashDuration = 0.15f;
 
         private int _currentHealth;
         private bool _isInvulnerable = false;
         private bool _isRespawning = false;
         private PlayerController _playerController;
         private Renderer[] _blinkRenderers;
+        private Color[] _originalColors;
 
         // Points de sauvegarde / respawn
         private Vector3 _respawnPosition;
@@ -51,6 +55,7 @@ namespace PuzzleDungeon.Player
         public int MaxHealth => _maxHealth;
         public bool IsInvulnerable => _isInvulnerable;
         public bool IsRespawning => _isRespawning;
+        public float InvulnerabilityDuration => _invulnerabilityDuration;
 
         private void Awake()
         {
@@ -84,6 +89,17 @@ namespace PuzzleDungeon.Player
                 }
             }
             _blinkRenderers = filtered.ToArray();
+            
+            // Sauvegarder les couleurs d'origine pour le flash (Toon Shader friendly)
+            _originalColors = new Color[_blinkRenderers.Length];
+            for (int i = 0; i < _blinkRenderers.Length; i++)
+            {
+                Material mat = _blinkRenderers[i].material;
+                if (mat.HasProperty("_Color")) _originalColors[i] = mat.color;
+                else if (mat.HasProperty("_BaseColor")) _originalColors[i] = mat.GetColor("_BaseColor");
+                else _originalColors[i] = Color.white;
+            }
+
             Debug.Log($"[PlayerHealth] {_blinkRenderers.Length} renderer(s) cachés pour le clignotement.");
         }
 
@@ -115,7 +131,8 @@ namespace PuzzleDungeon.Player
             }
             else
             {
-                StartCoroutine(InvulnerabilityRoutine());
+                // On lance l'invulnérabilité en précisant si c'est une chute dans le vide ou non
+                StartCoroutine(InvulnerabilityRoutine(type == DamageType.Void));
             }
         }
 
@@ -156,7 +173,9 @@ namespace PuzzleDungeon.Player
 
             // On lance la séquence de blocage + animation de réapparition
             StartRespawnSequence();
-            StartCoroutine(InvulnerabilityRoutine());
+            
+            // Invulnérabilité "invisible" après un respawn
+            StartCoroutine(InvulnerabilityRoutine(true));
         }
 
         /// <summary>
@@ -182,30 +201,54 @@ namespace PuzzleDungeon.Player
             OnRespawnEnd?.Invoke();
         }
 
-        private IEnumerator InvulnerabilityRoutine()
+        private IEnumerator InvulnerabilityRoutine(bool isVoidDamage)
         {
             _isInvulnerable = true;
             
             float elapsedTime = 0f;
             float blinkInterval = 0.15f; // Vitesse de clignotement
-            bool isHidden = false;
+            bool toggle = false;
 
             while (elapsedTime < _invulnerabilityDuration)
             {
-                isHidden = !isHidden;
-                foreach (var rend in _blinkRenderers)
+                toggle = !toggle;
+
+                for (int i = 0; i < _blinkRenderers.Length; i++)
                 {
-                    if (rend != null) rend.forceRenderingOff = isHidden;
+                    if (_blinkRenderers[i] == null) continue;
+
+                    if (isVoidDamage)
+                    {
+                        // Mode classique : on disparaît/réapparaît
+                        _blinkRenderers[i].forceRenderingOff = toggle;
+                    }
+                    else
+                    {
+                        // Mode combat : on clignote en rouge (Toon friendly)
+                        Material mat = _blinkRenderers[i].material;
+                        Color targetColor = toggle ? _flashColor : _originalColors[i];
+                        
+                        if (mat.HasProperty("_Color")) mat.color = targetColor;
+                        if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", targetColor);
+                        if (mat.HasProperty("_EmissionColor")) mat.SetColor("_EmissionColor", toggle ? _flashColor * 2f : Color.black);
+                    }
                 }
 
                 yield return new WaitForSeconds(blinkInterval);
                 elapsedTime += blinkInterval;
             }
 
-            // S'assurer que les renderers sont bien réactivés à la fin
-            foreach (var rend in _blinkRenderers)
+            // Restauration finale
+            for (int i = 0; i < _blinkRenderers.Length; i++)
             {
-                if (rend != null) rend.forceRenderingOff = false;
+                if (_blinkRenderers[i] == null) continue;
+                
+                _blinkRenderers[i].forceRenderingOff = false;
+                
+                Material mat = _blinkRenderers[i].material;
+                if (mat.HasProperty("_Color")) mat.color = _originalColors[i];
+                if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", _originalColors[i]);
+                if (mat.HasProperty("_EmissionColor")) mat.SetColor("_EmissionColor", Color.black);
             }
             
             _isInvulnerable = false;

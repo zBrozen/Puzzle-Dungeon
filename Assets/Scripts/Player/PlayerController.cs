@@ -9,8 +9,9 @@ namespace PuzzleDungeon.Player
     {
         public event Action OnDrawWeapon;
         public event Action OnSheatheWeapon;
+        public event Action<int> OnAttackAction;
         
-        public enum PlayerState { Idle, Move, Jump, Fall, Land, Climb, Push, BigPush, HardLand, Roll }
+        public enum PlayerState { Idle, Move, Jump, Fall, Land, Climb, Push, BigPush, HardLand, Roll, Attack, Hurt, Treasure }
 
         [Header("Movement Settings")]
         [SerializeField] private float _moveSpeed = 5f;
@@ -48,6 +49,23 @@ namespace PuzzleDungeon.Player
         [SerializeField, Tooltip("L'épée attachée à la main")] private GameObject _swordInHand;
         [SerializeField, Tooltip("L'épée attachée dans le dos ou à la ceinture (optionnel)")] private GameObject _swordOnBack;
 
+        [Header("Attack Combo Settings")]
+        [SerializeField, Tooltip("Nombre maximum de coups dans le combo")] private int _maxComboStep = 3;
+        [SerializeField, Tooltip("Temps maximum entre deux attaques pour continuer le combo")] private float _comboWindowDuration = 0.8f;
+        [SerializeField, Tooltip("Durée de l'attaque bloquant les autres actions")] private float _attackDuration = 0.4f;
+        [SerializeField, Tooltip("Force de propulsion vers l'avant lors d'une attaque")] private float _attackForwardBoost = 4.0f;
+        [SerializeField, Tooltip("Délai pour laisser l'animation de dégainage jouer avant d'attaquer automatiquement")] private float _drawToAttackDelay = 0.2f;
+
+        [Header("Attack Damage Settings")]
+        [SerializeField, Tooltip("Dégâts infligés par l'épée")] private int _attackDamage = 1;
+        [SerializeField, Tooltip("Portée de l'attaque devant le joueur")] private float _attackHitRange = 1.5f;
+        [SerializeField, Tooltip("Largeur de la zone d'impact (rayon)")] private float _attackHitRadius = 1.0f;
+        [SerializeField, Tooltip("Layer contenant les ennemis")] private LayerMask _enemyLayer;
+        
+        [Header("Damage & Stun Settings")]
+        [SerializeField, Tooltip("Durée d'immobilisation après avoir pris un coup")] 
+        private float _hurtStunDuration = 0.5f;
+
         [Header("Lantern Settings")]
         [SerializeField, Tooltip("La lanterne dans la main gauche")] private GameObject _lanternInHand;
         [SerializeField, Tooltip("La lanterne accrochée à la ceinture/sac (optionnel)")] private GameObject _lanternOnBelt;
@@ -79,8 +97,12 @@ namespace PuzzleDungeon.Player
         [SerializeField] private float _liftDuration = 0.8f;
         [SerializeField] private float _forwardDuration = 0.4f;
         
-        [Header("Interaction Settings")]
         [SerializeField] private float _pushStrength = 0.5f;
+
+        [Header("Interaction Settings")]
+        [SerializeField] private KeyCode _interactKey = KeyCode.F;
+        [SerializeField] private float _interactRange = 2f;
+        [SerializeField] private LayerMask _interactableLayer;
 
         private CharacterController _controller;
         private Vector3 _velocity;
@@ -102,6 +124,14 @@ namespace PuzzleDungeon.Player
         [SerializeField, Tooltip("Temps de recharge entre deux grimpes (évite les répétitions accidentelles)")]
         private float _climbCooldown = 0.5f;
 
+        private int _currentComboStep = 0;
+        private float _comboTimer = 0f;
+        private Coroutine _attackCoroutine;
+        private Coroutine _hurtCoroutine;
+        private bool _isDrawingWeapon = false;
+        private PlayerHealth _playerHealth;
+        private PlayerInventory _inventory;
+
         public PlayerState CurrentState => _currentState;
         public float MovementSpeed => new Vector2(_controller.velocity.x, _controller.velocity.z).magnitude;
         public bool IsLocked { get; set; }
@@ -113,6 +143,11 @@ namespace PuzzleDungeon.Player
             _controller = GetComponent<CharacterController>();
             // Default ground layer to Everything if not set
             if (_groundLayer == 0) _groundLayer = ~0;
+            
+            if (_interactableLayer == 0)
+            {
+                Debug.LogWarning("[PlayerController] Interactable Layer is not set! Interactions with chests will not work.");
+            }
             
             // Sécurité : si la nouvelle variable est à 0 (valeur par défaut d'Unity), on lui donne une valeur correcte
             if (_climbHangOffsetY == 0f) _climbHangOffsetY = 1.8f;
@@ -127,6 +162,23 @@ namespace PuzzleDungeon.Player
             _isLanternDrawn = true;
             if (_lanternInHand != null) _lanternInHand.SetActive(true);
             if (_lanternOnBelt != null) _lanternOnBelt.SetActive(false);
+
+            _playerHealth = GetComponent<PlayerHealth>();
+            _inventory = GetComponent<PlayerInventory>();
+            
+            if (_playerHealth != null) _playerHealth.OnTakeDamage += HandleTakeDamage;
+            if (_inventory != null) _inventory.OnInventoryChanged += RefreshVisualItems;
+        }
+
+        private void Start()
+        {
+            RefreshVisualItems();
+        }
+
+        private void OnDisable()
+        {
+            if (_playerHealth != null) _playerHealth.OnTakeDamage -= HandleTakeDamage;
+            if (_inventory != null) _inventory.OnInventoryChanged -= RefreshVisualItems;
         }
 
         private void Update()
@@ -147,7 +199,15 @@ namespace PuzzleDungeon.Player
             if (_rollDecelerationTimer > 0f)
                 _rollDecelerationTimer -= Time.deltaTime;
             
-            if (!IsLocked && _currentState != PlayerState.Climb)
+            // Décrémenter le timer de combo
+            if (_comboTimer > 0f)
+            {
+                _comboTimer -= Time.deltaTime;
+                if (_comboTimer <= 0f)
+                    _currentComboStep = 0;
+            }
+            
+            if (!IsLocked && _currentState != PlayerState.Climb && _currentState != PlayerState.Hurt)
             {
                 HandleClimbInput(); // Priorité à la grimpe
                 
@@ -157,6 +217,7 @@ namespace PuzzleDungeon.Player
                     HandleMovement();
                     HandleAutoJump();
                     HandleWeapon();
+                    HandleInteraction();
                 }
             }
             else if (IsLocked)
@@ -172,25 +233,35 @@ namespace PuzzleDungeon.Player
                 UpdateState();
             }
 
+            // Empêche de rester sur la tête des ennemis
+            HandleEnemySliding();
+
             // On vérifie l'état de la lanterne à chaque frame en fonction du PlayerState
             HandleLantern();
         }
 
         private void HandleGroundedStatus()
         {
-            // On combine la détection native avec un Raycast de sécurité sous les pieds (0.2f de distance)
-            bool raycastGrounded = Physics.Raycast(transform.position + Vector3.up * 0.1f, Vector3.down, 0.25f, _groundLayer);
+            // Détection pour l'état visuel (animations) : on veut rester "grounded" sur les petites marches
+            // pour éviter de déclencher l'anim de chute à chaque petit dénivelé.
+            float visualCheckDist = (_velocity.y > 0.1f) ? 0.2f : (_stepHeight + 0.15f);
+            bool raycastVisualGrounded = Physics.Raycast(transform.position + Vector3.up * 0.1f, Vector3.down, visualCheckDist, _groundLayer);
             
-            _isGrounded = _controller.isGrounded || raycastGrounded;
+            _isGrounded = _controller.isGrounded || raycastVisualGrounded;
 
             if (!_isGrounded)
             {
-                _currentRunTime = 0f; // On reset le temps de course dès qu'on quitte le sol
+                _currentRunTime = 0f;
             }
 
-            if (_isGrounded && _velocity.y < 0)
+            // Détection pour la physique : on ne reset la vélocité que si on est réellement proche du sol.
+            // Si on est dans le "vide" d'une marche descendante, on laisse la gravité agir normalement
+            // pour que le personnage "tombe" physiquement sur la marche suivante au lieu de flotter.
+            bool isPhysicallyGrounded = _controller.isGrounded || Physics.Raycast(transform.position + Vector3.up * 0.1f, Vector3.down, 0.25f, _groundLayer);
+
+            if (isPhysicallyGrounded && _velocity.y < 0)
             {
-                _velocity.y = -2f; // Force le contact avec le sol
+                _velocity.y = -2f; // Force le contact avec le sol seulement quand on est très proche
             }
         }
 
@@ -200,6 +271,8 @@ namespace PuzzleDungeon.Player
             float vertical = Input.GetAxisRaw("Vertical");
             _inputDirection = new Vector2(horizontal, vertical);
             
+            if (_currentState == PlayerState.Attack) return;
+
             // On ne change la direction de mouvement QUE si on est au sol ET qu'on ne roule/saute pas
             // (pendant la roulade ou le déclenchement du saut, la direction est préservée)
             if (_isGrounded && _currentState != PlayerState.Roll && _currentState != PlayerState.Jump)
@@ -257,25 +330,51 @@ namespace PuzzleDungeon.Player
             }
         }
 
+        private void HandleEnemySliding()
+        {
+            // On ne glisse que si on est au sol (sur l'ennemi)
+            if (!_isGrounded) return;
+
+            // Raycast vers le bas pour détecter si on marche sur un ennemi
+            // On commence un peu plus haut pour être sûr de traverser le pied du joueur
+            if (Physics.Raycast(transform.position + Vector3.up * 0.5f, Vector3.down, out RaycastHit hit, 0.8f, _enemyLayer))
+            {
+                // Direction d'éjection : du centre de l'ennemi vers le joueur
+                Vector3 pushDir = transform.position - hit.transform.position;
+                pushDir.y = 0;
+                
+                // Si on est pile au milieu, on choisit une direction par défaut
+                if (pushDir.magnitude < 0.01f) pushDir = transform.forward;
+                
+                pushDir.Normalize();
+
+                // On applique un mouvement forcé vers l'extérieur
+                _controller.Move(pushDir * 5f * Time.deltaTime);
+            }
+        }
+
         private void HandleWeapon()
         {
+            // On ne peut dégainer que si on possède l'épée dans l'inventaire
+            if (_inventory != null && !_inventory.HasItem("Sword")) return;
+
             if (Input.GetKeyDown(_attackKey))
             {
                 if (!_isWeaponDrawn)
                 {
-                    DrawWeapon();
+                    if (!_isDrawingWeapon)
+                    {
+                        StartCoroutine(DrawAndAttackRoutine());
+                    }
                 }
                 else
                 {
-                    // Logique d'attaque à venir
-                    Debug.Log("Attaque !");
-                    // On attaque, donc on reset le temps avant de rengainer
-                    _sheatheTimer = _autoSheatheDelay; 
+                    TriggerAttack();
                 }
             }
 
             // Gestion du timer de rengainement automatique
-            if (_isWeaponDrawn)
+            if (_isWeaponDrawn && _currentState != PlayerState.Attack && !_isDrawingWeapon)
             {
                 _sheatheTimer -= Time.deltaTime;
                 if (_sheatheTimer <= 0f)
@@ -283,6 +382,60 @@ namespace PuzzleDungeon.Player
                     SheatheWeapon();
                 }
             }
+        }
+
+        private void HandleInteraction()
+        {
+            if (Input.GetKeyDown(_interactKey))
+            {
+                Debug.Log($"[Interaction] Key {_interactKey} pressed. Range: {_interactRange}, Layer: {_interactableLayer.value}");
+                
+                // On utilise un SphereCast plutôt qu'un Raycast pour être plus tolérant sur la visée
+                Vector3 origin = transform.position + Vector3.up * 1f;
+                float radius = 0.5f;
+
+                if (Physics.SphereCast(origin, radius, transform.forward, out RaycastHit hit, _interactRange, _interactableLayer))
+                {
+                    Debug.Log($"[Interaction] Hit: {hit.collider.name} on layer {hit.collider.gameObject.layer}");
+                    
+                    if (hit.collider.TryGetComponent(out Chest chest))
+                    {
+                        Debug.Log("[Interaction] Chest component found, opening...");
+                        chest.Open(this);
+                    }
+                    else if (hit.collider.GetComponentInParent<Chest>())
+                    {
+                        Debug.Log("[Interaction] Chest component found in parent, opening...");
+                        hit.collider.GetComponentInParent<Chest>().Open(this);
+                    }
+                    else
+                    {
+                        Debug.Log("[Interaction] No Chest component found on hit object.");
+                    }
+                }
+                else
+                {
+                    Debug.Log("[Interaction] Raycast/SphereCast hit nothing. Check if the Chest is on the correct Layer and has a Collider.");
+                }
+            }
+        }
+
+        private System.Collections.IEnumerator DrawAndAttackRoutine()
+        {
+            _isDrawingWeapon = true;
+            DrawWeapon();
+            
+            // Laisse un court délai pour l'animation de dégainage (UpperBody)
+            yield return new WaitForSeconds(_drawToAttackDelay);
+            
+            // Sécurité : on s'assure que l'épée est bien dans la main 
+            // (au cas où l'animation event n'a pas eu le temps de se déclencher)
+            AnimEvent_GrabSword();
+            
+            _isDrawingWeapon = false;
+            
+            // Déclenche l'attaque automatiquement après avoir dégainé
+            TriggerAttack();
         }
 
         public void DrawWeapon()
@@ -327,12 +480,34 @@ namespace PuzzleDungeon.Player
             if (_swordOnBack != null) _swordOnBack.SetActive(true);
         }
 
+        // Appelé via un Animation Event (ou via le pont PlayerAnimator)
+        public void AnimEvent_DealDamage()
+        {
+            // Position approximative devant le joueur pour la zone d'impact
+            Vector3 hitCenter = transform.position + Vector3.up * 1f + transform.forward * (_attackHitRange / 2f);
+            
+            Collider[] hits = Physics.OverlapSphere(hitCenter, _attackHitRadius, _enemyLayer);
+            
+            // DEBUG: Décommentez pour voir si la fonction est bien appelée
+            // Debug.Log($"[Combat] Coup porté ! Objets détectés dans la zone : {hits.Length}");
+
+            foreach (var hit in hits)
+            {
+                // Vérifier si la cible possède le script EnemyHealth
+                if (hit.TryGetComponent(out PuzzleDungeon.Enemies.EnemyHealth enemyHealth))
+                {
+                    enemyHealth.TakeDamage(_attackDamage);
+                    Debug.Log($"[Combat] Ennemi touché : {hit.name}");
+                }
+            }
+        }
+
         private void HandleLantern()
         {
-            // La lanterne est dégainée quand on est au sol et libre de nos mains
-            // J'ai inclus Push et BigPush car pousser un gros bloc nécessite souvent les deux mains.
+            // La lanterne est maintenant toujours présente par défaut
+            // Elle est dégainée quand on est au sol et libre de nos mains
             bool canHoldLantern = (_currentState == PlayerState.Idle || _currentState == PlayerState.Move);
-
+            
             if (canHoldLantern && !_isLanternDrawn)
             {
                 DrawLantern();
@@ -357,8 +532,95 @@ namespace PuzzleDungeon.Player
             if (_lanternOnBelt != null) _lanternOnBelt.SetActive(true);
         }
 
+        private void RefreshVisualItems()
+        {
+            if (_inventory == null) return;
+
+            bool hasSword = _inventory.HasItem("Sword");
+
+            // Si on n'a plus l'épée, on éteint tout ce qui y touche
+            if (!hasSword)
+            {
+                if (_swordInHand != null) _swordInHand.SetActive(false);
+                if (_swordOnBack != null) _swordOnBack.SetActive(false);
+                _isWeaponDrawn = false;
+            }
+            else
+            {
+                // Si on a l'épée mais qu'elle n'est pas dégainée, on l'affiche sur le dos
+                if (!_isWeaponDrawn && _swordOnBack != null) _swordOnBack.SetActive(true);
+            }
+
+            // La lanterne est toujours visible (soit main, soit ceinture)
+            if (!_isLanternDrawn && _lanternOnBelt != null) _lanternOnBelt.SetActive(true);
+        }
+
+        public void TriggerAttack()
+        {
+            if (!_isGrounded) return;
+            if (_currentState == PlayerState.Climb || _currentState == PlayerState.Roll || _currentState == PlayerState.HardLand || _currentState == PlayerState.Push || _currentState == PlayerState.BigPush) return;
+            
+            // Si on a déjà atteint la fin du combo et qu'on est encore en train d'attaquer, on ignore l'input pour l'instant
+            if (_currentState == PlayerState.Attack && _currentComboStep >= _maxComboStep) return;
+
+            _sheatheTimer = _autoSheatheDelay; // reset timer
+
+            if (_comboTimer > 0f)
+            {
+                _currentComboStep++;
+                if (_currentComboStep > _maxComboStep) _currentComboStep = 1;
+            }
+            else
+            {
+                _currentComboStep = 1;
+            }
+
+            _comboTimer = _comboWindowDuration;
+
+            if (_attackCoroutine != null) StopCoroutine(_attackCoroutine);
+            _attackCoroutine = StartCoroutine(AttackRoutine());
+        }
+
+        private System.Collections.IEnumerator AttackRoutine()
+        {
+            _currentState = PlayerState.Attack;
+            
+            // Si on veut taper dans la direction du mouvement courant au sol
+            Vector3 attackDir = transform.forward;
+            if (_inputDirection.magnitude > 0.1f)
+            {
+                attackDir = _currentMoveDirection;
+                transform.rotation = Quaternion.LookRotation(attackDir);
+            }
+
+            OnAttackAction?.Invoke(_currentComboStep);
+
+            float elapsed = 0f;
+            while(elapsed < _attackDuration)
+            {
+                // Propulsion uniquement sur la première moitié de l'attaque
+                if (elapsed < _attackDuration * 0.4f)
+                {
+                    _controller.Move(attackDir * _attackForwardBoost * Time.deltaTime);
+                }
+                
+                elapsed += Time.deltaTime;
+                yield return null;
+            }
+
+            if (_currentState == PlayerState.Attack)
+            {
+                _currentState = PlayerState.Idle;
+            }
+        }
+
         private Vector3 _autoJumpTarget;
         private bool _isAutoJumpingToTarget;
+
+        public void SetState(PlayerState newState)
+        {
+            _currentState = newState;
+        }
 
         public void TriggerJump()
         {
@@ -726,7 +988,7 @@ namespace PuzzleDungeon.Player
 
         private void UpdateState()
         {
-            if (_currentState == PlayerState.Climb || _currentState == PlayerState.BigPush || _currentState == PlayerState.HardLand || _currentState == PlayerState.Roll) return;
+            if (_currentState == PlayerState.Climb || _currentState == PlayerState.BigPush || _currentState == PlayerState.HardLand || _currentState == PlayerState.Roll || _currentState == PlayerState.Attack || _currentState == PlayerState.Hurt || _currentState == PlayerState.Treasure) return;
 
             // On ne traite les états "au sol" (Idle/Move) que si on n'est pas en train de monter (saut)
             // Cela évite que l'état Jump soit écrasé par Idle au premier frame du saut.
@@ -784,6 +1046,11 @@ namespace PuzzleDungeon.Player
             Gizmos.DrawLine(stepBasePos, stepTopPos);
             // Petit plateau pour bien voir la limite
             Gizmos.DrawWireCube(stepTopPos + transform.forward * 0.1f, new Vector3(0.4f, 0.02f, 0.2f));
+
+            // Visualisation de la zone d'attaque (Hitbox)
+            Gizmos.color = new Color(1f, 0f, 0f, 0.3f); // Rouge transparent
+            Vector3 attackCenter = transform.position + Vector3.up * 1f + transform.forward * (_attackHitRange / 2f);
+            Gizmos.DrawWireSphere(attackCenter, _attackHitRadius);
 
             // Visualize the edge check ray
             Vector3 moveDirection = transform.forward;
@@ -932,5 +1199,31 @@ namespace PuzzleDungeon.Player
 
         // Propriété publique pour savoir si le bonus de roulade est actif (utile pour debug ou UI)
         public bool HasRollJumpBoost => _rollJumpBoostTimer > 0f;
+
+        private void HandleTakeDamage(DamageType type)
+        {
+            // Le vide (Void) gère son propre système de blocage, on n'ajoute pas de stun ici
+            if (type == DamageType.Void) return;
+
+            if (_hurtCoroutine != null) StopCoroutine(_hurtCoroutine);
+            _hurtCoroutine = StartCoroutine(HurtStunRoutine());
+        }
+
+        private System.Collections.IEnumerator HurtStunRoutine()
+        {
+            // On interrompt les actions en cours
+            if (_attackCoroutine != null) StopCoroutine(_attackCoroutine);
+            
+            _currentState = PlayerState.Hurt;
+            _currentMoveDirection = Vector3.zero;
+
+            // On utilise à nouveau la durée spécifique du stun (indépendante de l'invulnérabilité)
+            yield return new WaitForSeconds(_hurtStunDuration);
+
+            if (_currentState == PlayerState.Hurt)
+            {
+                _currentState = PlayerState.Idle;
+            }
+        }
     }
 }

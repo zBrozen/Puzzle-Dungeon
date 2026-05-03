@@ -60,6 +60,8 @@ namespace PuzzleDungeon.Player
         private System.Collections.Generic.HashSet<Transform> _focusedTargets = new System.Collections.Generic.HashSet<Transform>();
         private Transform _ignoreTarget;
 
+        public bool IsTransitioning => _transitionTimer > 0;
+
         private void Start()
         {
             if (_target == null) return;
@@ -227,7 +229,16 @@ namespace PuzzleDungeon.Player
             if (_currentMode == CameraMode.DirectFollow)
             {
                 Vector3 desiredPos = _target.position - _target.forward * _distance + _target.up * _offset.y;
-                targetRot = Quaternion.LookRotation(_target.forward, _target.up);
+                
+                if (_focusTarget != null && _focusTimeRemaining > 0)
+                {
+                    Vector3 focusPoint = _focusTarget.position + Vector3.up * _focusYOffset + _activeFocusTargetOffset;
+                    targetRot = Quaternion.LookRotation(focusPoint - desiredPos);
+                }
+                else
+                {
+                    targetRot = Quaternion.LookRotation(_target.forward, _target.up);
+                }
 
                 // --- SÉCURITÉ COLLISIONS (DirectFollow) ---
                 Vector3 headPos = _target.position; // On part du centre de la cible (le scarabée)

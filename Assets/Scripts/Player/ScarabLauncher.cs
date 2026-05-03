@@ -29,7 +29,11 @@ namespace PuzzleDungeon.Player
         [Header("UI")]
         [SerializeField] private ScarabReticleUI _reticleUI;
 
+        [Header("Inventory Settings")]
+        [SerializeField] private string _beetleItemName = "Beetle";
+
         private PlayerController _playerController;
+        private PlayerInventory _inventory;
         private CameraController _cameraController;
         private Scarab _activeScarab;
         private float _lastLaunchTime;
@@ -38,6 +42,7 @@ namespace PuzzleDungeon.Player
         private void Awake()
         {
             _playerController = GetComponent<PlayerController>();
+            _inventory = GetComponent<PlayerInventory>();
             _cameraController = FindFirstObjectByType<CameraController>();
             
             if (_launchPoint == null) _launchPoint = transform;
@@ -51,6 +56,9 @@ namespace PuzzleDungeon.Player
                 case LauncherState.Idle:
                     if (Input.GetKeyDown(_launchKey) && Time.time > _lastLaunchTime + _cooldown)
                     {
+                        // On vérifie si on possède le scarabée dans l'inventaire
+                        if (_inventory != null && !_inventory.HasItem(_beetleItemName)) return;
+
                         if (_playerController.CurrentState == PlayerController.PlayerState.Idle || 
                             _playerController.CurrentState == PlayerController.PlayerState.Move)
                         {

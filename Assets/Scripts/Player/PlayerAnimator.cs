@@ -46,6 +46,7 @@ namespace PuzzleDungeon.Player
             {
                 _playerController.OnDrawWeapon += HandleDrawWeapon;
                 _playerController.OnSheatheWeapon += HandleSheatheWeapon;
+                _playerController.OnAttackAction += HandleAttackAction;
             }
             if (_playerHealth != null)
             {
@@ -59,6 +60,7 @@ namespace PuzzleDungeon.Player
             {
                 _playerController.OnDrawWeapon -= HandleDrawWeapon;
                 _playerController.OnSheatheWeapon -= HandleSheatheWeapon;
+                _playerController.OnAttackAction -= HandleAttackAction;
             }
             if (_playerHealth != null)
             {
@@ -76,6 +78,15 @@ namespace PuzzleDungeon.Player
             _animator.SetTrigger("SheatheWeapon");
         }
 
+        private void HandleAttackAction(int comboStep)
+        {
+            // Les attaques utilisent souvent le corps entier (ou on vide l'upperbody si l'attaque est sur la base)
+            ClearUpperBodyLayer();
+            
+            // On utilise CrossFadeInFixedTime avec un temps très court (0.05s) pour une réactivité maximale
+            _animator.CrossFadeInFixedTime($"Attack_{comboStep}", 0.05f);
+        }
+
         private void HandleTakeDamage(DamageType damageType)
         {
             switch (damageType)
@@ -88,6 +99,21 @@ namespace PuzzleDungeon.Player
                     _animator.SetTrigger("GetHit");
                     break;
             }
+        }
+
+        public void TriggerTreasureOpening()
+        {
+            _playerController.SetState(PlayerController.PlayerState.Treasure);
+            ClearUpperBodyLayer();
+            // Play est plus radical et direct que CrossFade pour le debug
+            _animator.Play("TreasureOpen", 0, 0f);
+        }
+
+        public void TriggerTreasureSuccess()
+        {
+            _playerController.SetState(PlayerController.PlayerState.Treasure);
+            ClearUpperBodyLayer();
+            _animator.Play("TreasureSuccess", 0, 0f);
         }
 
         /// <summary>
@@ -147,7 +173,9 @@ namespace PuzzleDungeon.Player
                                  || state == PlayerController.PlayerState.Push
                                  || state == PlayerController.PlayerState.BigPush
                                  || state == PlayerController.PlayerState.HardLand
-                                 || state == PlayerController.PlayerState.Roll);
+                                 || state == PlayerController.PlayerState.Roll
+                                 || state == PlayerController.PlayerState.Attack
+                                 || state == PlayerController.PlayerState.Treasure);
 
             if (isFullBodyState)
             {
@@ -199,12 +227,40 @@ namespace PuzzleDungeon.Player
                 case PlayerController.PlayerState.Roll:
                     stateName = "Roll";
                     break;
+                case PlayerController.PlayerState.Attack:
+                    // Déjà géré par l'événement HandleAttackAction
+                    stateName = "";
+                    break;
+                case PlayerController.PlayerState.Treasure:
+                    // Géré par les méthodes TriggerTreasure...
+                    stateName = "";
+                    break;
             }
 
             if (!string.IsNullOrEmpty(stateName))
             {
-                _animator.CrossFade(stateName, _transitionDuration);
+                // Utiliser FixedTime garantit que _transitionDuration (ex: 0.15s) est bien en secondes 
+                // absolues et non un pourcentage de la longueur de l'animation, ce qui évite l'effet de lenteur.
+                _animator.CrossFadeInFixedTime(stateName, _transitionDuration);
             }
+        }
+        // --- Ponts pour les Animation Events ---
+        // Ces méthodes sont appelées par les clips d'animation sur l'objet du modèle
+        // et transmettent l'ordre au PlayerController situé sur le parent.
+
+        public void AnimEvent_DealDamage()
+        {
+            if (_playerController != null) _playerController.AnimEvent_DealDamage();
+        }
+
+        public void AnimEvent_GrabSword()
+        {
+            if (_playerController != null) _playerController.AnimEvent_GrabSword();
+        }
+
+        public void AnimEvent_StoreSword()
+        {
+            if (_playerController != null) _playerController.AnimEvent_StoreSword();
         }
     }
 }
