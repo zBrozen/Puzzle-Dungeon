@@ -39,6 +39,8 @@ namespace PuzzleDungeon.Player
         private float _rollJumpBoostMultiplier = 1.3f;
         [SerializeField, Tooltip("Temps de recharge entre deux roulades (en secondes)")]
         private float _rollCooldown = 0.8f;
+        [SerializeField, Tooltip("Durée de la décélération progressive après la roulade (en secondes)")]
+        private float _rollDecelerationDuration = 0.2f;
 
         [Header("Weapon & Combat Settings")]
         [SerializeField] private KeyCode _attackKey = KeyCode.Mouse0;
@@ -92,8 +94,13 @@ namespace PuzzleDungeon.Player
         private float _sheatheTimer = 0f;
         private bool _isLanternDrawn = false;
         private float _fallPeakY;
-        private float _rollJumpBoostTimer = 0f; // Temps restant dans la fenêtre de boost de saut post-roulade
-        private float _rollCooldownTimer = 0f;  // Temps restant avant de pouvoir rouler à nouveau
+        private float _rollJumpBoostTimer = 0f;  // Temps restant dans la fenêtre de boost de saut post-roulade
+        private float _rollCooldownTimer = 0f;   // Temps restant avant de pouvoir rouler à nouveau
+        private Vector3 _rollDirection;          // Direction de la dernière roulade (pour le saut post-roulade)
+        private float _rollDecelerationTimer = 0f; // Temps restant dans la phase de décélération post-roulade
+        private float _lastClimbTime;
+        [SerializeField, Tooltip("Temps de recharge entre deux grimpes (évite les répétitions accidentelles)")]
+        private float _climbCooldown = 0.5f;
 
         public PlayerState CurrentState => _currentState;
         public float MovementSpeed => new Vector2(_controller.velocity.x, _controller.velocity.z).magnitude;
@@ -137,6 +144,8 @@ namespace PuzzleDungeon.Player
                 _rollJumpBoostTimer -= Time.deltaTime;
             if (_rollCooldownTimer > 0f)
                 _rollCooldownTimer -= Time.deltaTime;
+            if (_rollDecelerationTimer > 0f)
+                _rollDecelerationTimer -= Time.deltaTime;
             
             if (!IsLocked && _currentState != PlayerState.Climb)
             {
@@ -174,6 +183,11 @@ namespace PuzzleDungeon.Player
             
             _isGrounded = _controller.isGrounded || raycastGrounded;
 
+            if (!_isGrounded)
+            {
+                _currentRunTime = 0f; // On reset le temps de course dès qu'on quitte le sol
+            }
+
             if (_isGrounded && _velocity.y < 0)
             {
                 _velocity.y = -2f; // Force le contact avec le sol
@@ -186,8 +200,9 @@ namespace PuzzleDungeon.Player
             float vertical = Input.GetAxisRaw("Vertical");
             _inputDirection = new Vector2(horizontal, vertical);
             
-            // On ne change la direction de mouvement QUE si on est au sol
-            if (_isGrounded)
+            // On ne change la direction de mouvement QUE si on est au sol ET qu'on ne roule/saute pas
+            // (pendant la roulade ou le déclenchement du saut, la direction est préservée)
+            if (_isGrounded && _currentState != PlayerState.Roll && _currentState != PlayerState.Jump)
             {
                 Transform camTransform = Camera.main.transform;
                 Vector3 camForward = camTransform.forward;
@@ -208,8 +223,23 @@ namespace PuzzleDungeon.Player
 
                 // Si on est en auto-saut, on utilise la vitesse calculée directement
                 // Sinon, on utilise la vitesse normale — boostée pendant la roulade au sol,
+                // ou décélération progressive après la roulade,
                 // ou boostée en l'air si on a roulé juste avant de sauter.
-                float groundSpeed = _moveSpeed * (_currentState == PlayerState.Roll ? _rollSpeedMultiplier : 1f);
+                float groundMultiplier;
+                if (_currentState == PlayerState.Roll)
+                {
+                    groundMultiplier = _rollSpeedMultiplier;
+                }
+                else if (_rollDecelerationTimer > 0f)
+                {
+                    float t = _rollDecelerationTimer / _rollDecelerationDuration;
+                    groundMultiplier = Mathf.Lerp(1f, _rollSpeedMultiplier, t);
+                }
+                else
+                {
+                    groundMultiplier = 1f;
+                }
+                float groundSpeed = _moveSpeed * groundMultiplier;
                 float airMultiplier = _jumpForwardSpeedMultiplier * (_rollJumpBoostTimer > 0f ? _rollJumpBoostMultiplier : 1f);
                 float speed = _isAutoJumpingToTarget ? 1f : (_isGrounded ? groundSpeed : _moveSpeed * airMultiplier);
                 _controller.Move(_currentMoveDirection * speed * Time.deltaTime);
@@ -339,6 +369,11 @@ namespace PuzzleDungeon.Player
             _fallPeakY = transform.position.y;
             _velocity.y = Mathf.Sqrt(_jumpForce * -2f * _gravity);
             _currentState = PlayerState.Jump;
+
+            // Si on saute pendant la fenêtre post-roulade (ou pendant la roulade) sans input,
+            // on s'assure d'avoir la direction de la roulade.
+            if (_rollJumpBoostTimer > 0f && _inputDirection.magnitude < 0.1f)
+                _currentMoveDirection = _rollDirection;
         }
 
         public void JumpTo(Vector3 targetPosition)
@@ -409,9 +444,15 @@ namespace PuzzleDungeon.Player
             }
 
             // Auto jump logic: check if there's no ground ahead while moving
-            if (!_isGrounded || CurrentState == PlayerState.Jump || _currentRunTime < _minRunTimeToJump || _inputDirection.magnitude < 0.1f) return;
+            // Pendant une roulade, on ignore les checks d'input et de run time car
+            // c'est la roulade elle-même qui fournit le déplacement (y compris depuis l'arrêt).
+            bool isRolling = CurrentState == PlayerState.Roll;
+            if (!_isGrounded || CurrentState == PlayerState.Jump) return;
+            if (!isRolling && (_currentRunTime < _minRunTimeToJump || _inputDirection.magnitude < 0.1f)) return;
 
-            Vector3 moveDirection = new Vector3(_controller.velocity.x, 0, _controller.velocity.z).normalized;
+            Vector3 moveDirection = isRolling
+                ? _currentMoveDirection.normalized  // pendant la roulade, on utilise la direction forcée
+                : new Vector3(_controller.velocity.x, 0, _controller.velocity.z).normalized;
             if (moveDirection.magnitude < 0.1f) return;
 
             if (Vector3.Dot(moveDirection, _currentMoveDirection) < 0.5f) return;
@@ -476,9 +517,14 @@ namespace PuzzleDungeon.Player
 
         private void HandleClimbInput()
         {
+            // On peut grimper si :
+            // 1. On n'est pas déjà en train de grimper (sécurité)
+            // 2. Le cooldown est passé
+            if (Time.time - _lastClimbTime < _climbCooldown) return;
+
             // Pour éviter les bugs où le CharacterController se croit au sol sur une micro-corniche du mur,
-            // on vérifie avec un Raycast strict vers le bas.
-            bool trueGrounded = Physics.Raycast(transform.position + Vector3.up * 0.1f, Vector3.down, 0.3f, _groundLayer);
+            // on vérifie avec un Raycast strict vers le bas. On inclut la couche climbable.
+            bool trueGrounded = Physics.Raycast(transform.position + Vector3.up * 0.1f, Vector3.down, 0.3f, _groundLayer | _climbableLayer);
 
             // On peut grimper si :
             // 1. On appuie sur la touche (manuel, souvent utilisé au sol)
@@ -512,61 +558,72 @@ namespace PuzzleDungeon.Player
 
             if (_isWeaponDrawn) SheatheWeapon();
 
-            // On fixe la direction de roulade dans _currentMoveDirection pour que
-            // HandleMovement applique le boost de vitesse dans cette direction.
-            // Le joueur peut néanmoins ré-orienter légèrement en cours de roulade.
+            // Stocker et appliquer la direction de roulade.
+            _rollDirection = direction;
             _currentMoveDirection = direction;
+
+            // Démarrer le boost DÈS le début pour couvrir le saut pendant ET après la roulade.
+            _rollJumpBoostTimer = _rollDuration + _rollJumpBoostWindow;
 
             yield return new WaitForSeconds(_rollDuration);
 
-            // Activer la fenêtre de boost pour le prochain saut et démarrer le cooldown
-            _rollJumpBoostTimer = _rollJumpBoostWindow;
             _rollCooldownTimer = _rollCooldown;
+            _rollDecelerationTimer = _rollDecelerationDuration;
 
-            _currentState = PlayerState.Idle;
+            // On ne nettoie la direction que si on est encore dans l'état Roll
+            // (si on a sauté entre temps, on laisse le saut gérer sa direction)
+            if (_currentState == PlayerState.Roll)
+            {
+                if (_isGrounded && _inputDirection.magnitude < 0.1f)
+                    _currentMoveDirection = Vector3.zero;
+                
+                _currentState = PlayerState.Idle;
+            }
         }
 
         private bool CheckForClimbableLedge(out Vector3 targetPos, out Vector3 wallNormal)
         {
             targetPos = Vector3.zero;
-            wallNormal = -transform.forward; // Normale par défaut si on ne trouve pas la face du mur
+            wallNormal = -transform.forward; 
             Vector3 direction = transform.forward;
             Vector3 flatDirection = new Vector3(direction.x, 0, direction.z).normalized;
             
-            // On sélectionne la hauteur max selon si on est au sol ou en l'air
             float currentMaxHeight = _isGrounded ? _climbMaxHeight : _airClimbMaxHeight;
             
-            // On teste plusieurs distances en avant du joueur pour trouver le rebord
-            float[] forwardDistances = { 0.5f, 0.75f, 1.0f };
-            bool foundLedge = false;
+            // On réduit légèrement les distances pour être plus précis et éviter de "traverser" des angles
+            float[] forwardDistances = { 0.4f, 0.6f, 0.8f };
             
             foreach (float dist in forwardDistances)
             {
-                // On part du haut (hauteur max actuelle) et on descend directement
                 Vector3 checkPoint = transform.position + Vector3.up * currentMaxHeight + flatDirection * dist;
                 
                 if (Physics.Raycast(checkPoint, Vector3.down, out RaycastHit ledgeHit, currentMaxHeight + 0.5f, _climbableLayer))
                 {
-                    foundLedge = true;
+                    // FIX: On vérifie que la surface du rebord est bien horizontale (normale vers le haut)
+                    if (ledgeHit.normal.y < 0.9f) continue;
+
                     float height = ledgeHit.point.y - transform.position.y;
                     
-                    // Si on a trouvé un rebord à une hauteur valide
-                    if (height > 0.5f && height <= currentMaxHeight)
+                    // FIX: En l'air, on ne veut attraper que des rebords qui sont au-dessus de nous
+                    // pour éviter de "redescendre" se suspendre à un rebord sur lequel on pourrait marcher.
+                    float minHeight = _isGrounded ? _stepHeight : (_climbHangOffsetY - 0.2f);
+                    
+                    if (height > minHeight && height <= currentMaxHeight)
                     {
-                        // On vérifie qu'il n'y a pas de plafond au-dessus du rebord pour se tenir debout
+                        // On vérifie qu'il n'y a pas de plafond au-dessus
                         if (!Physics.Raycast(ledgeHit.point + Vector3.up * 0.1f, Vector3.up, 1.8f, _groundLayer | _climbableLayer))
                         {
-                            targetPos = ledgeHit.point;
-                            
-                            // On cherche la normale exacte du mur pour que le personnage s'aligne bien
-                            // On tire un rayon depuis le rebord vers le joueur (légèrement en dessous du rebord)
-                            Vector3 wallCheckStart = ledgeHit.point + Vector3.down * 0.2f + flatDirection * 0.2f;
-                            if (Physics.Raycast(wallCheckStart, -flatDirection, out RaycastHit wallHit, 1.0f, _climbableLayer))
+                            // On cherche la normale exacte du mur pour valider que c'est une face verticale
+                            Vector3 wallCheckStart = ledgeHit.point + Vector3.down * 0.1f - flatDirection * 0.5f;
+                            if (Physics.Raycast(wallCheckStart, flatDirection, out RaycastHit wallHit, 0.7f, _climbableLayer))
                             {
+                                // FIX: On vérifie que le mur est bien vertical (normale horizontale)
+                                if (Mathf.Abs(wallHit.normal.y) > 0.3f) continue;
+
                                 wallNormal = wallHit.normal;
+                                targetPos = ledgeHit.point;
+                                return true;
                             }
-                            
-                            return true;
                         }
                     }
                 }
@@ -654,6 +711,7 @@ namespace PuzzleDungeon.Player
             transform.position = endPos;
 
             _controller.enabled = true;
+            _lastClimbTime = Time.time;
             _currentState = PlayerState.Idle;
         }
 
@@ -670,13 +728,13 @@ namespace PuzzleDungeon.Player
         {
             if (_currentState == PlayerState.Climb || _currentState == PlayerState.BigPush || _currentState == PlayerState.HardLand || _currentState == PlayerState.Roll) return;
 
-            if (_isGrounded)
+            // On ne traite les états "au sol" (Idle/Move) que si on n'est pas en train de monter (saut)
+            // Cela évite que l'état Jump soit écrasé par Idle au premier frame du saut.
+            if (_isGrounded && _velocity.y <= 0.1f)
             {
                 // Si on vient de tomber ou de sauter et qu'on touche le sol
                 if (_currentState == PlayerState.Fall || _currentState == PlayerState.Jump)
                 {
-                    _currentRunTime = 0f;
-
                     // Vérifier si la chute est assez haute pour déclencher la roulade
                     float fallDistance = _fallPeakY - transform.position.y;
                     if (fallDistance >= _hardLandHeightThreshold)
@@ -735,7 +793,7 @@ namespace PuzzleDungeon.Player
 
             // Visualize climb detection (New Top-Down Raycasts)
             Vector3 flatDirection = new Vector3(moveDirection.x, 0, moveDirection.z).normalized;
-            float[] forwardDistances = { 0.5f, 0.75f, 1.0f };
+            float[] forwardDistances = { 0.4f, 0.6f, 0.8f };
             
             foreach (float dist in forwardDistances)
             {

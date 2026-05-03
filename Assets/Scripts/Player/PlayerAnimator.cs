@@ -15,6 +15,8 @@ namespace PuzzleDungeon.Player
         private bool _useRandomJumps = false;
         [SerializeField, Tooltip("Liste des noms des animations de saut à utiliser")]
         private string[] _randomJumpAnimations = { "Jump" };
+        [SerializeField, Tooltip("Animation de saut spécifique après une roulade (laisser vide pour utiliser l'anim normale)")]
+        private string _rollJumpAnimationName = "";
 
         [Header("Animator Layers")]
         [SerializeField, Tooltip("Index du layer UpperBody dans l'Animator (généralement 1)")]
@@ -161,7 +163,12 @@ namespace PuzzleDungeon.Player
                     stateName = "Move";
                     break;
                 case PlayerController.PlayerState.Jump:
-                    if (_useRandomJumps && _randomJumpAnimations != null && _randomJumpAnimations.Length > 0)
+                    // Priorité : saut-roulade > aléatoire > défaut
+                    if (!string.IsNullOrEmpty(_rollJumpAnimationName) && _playerController.HasRollJumpBoost)
+                    {
+                        stateName = _rollJumpAnimationName;
+                    }
+                    else if (_useRandomJumps && _randomJumpAnimations != null && _randomJumpAnimations.Length > 0)
                     {
                         stateName = _randomJumpAnimations[Random.Range(0, _randomJumpAnimations.Length)];
                     }
