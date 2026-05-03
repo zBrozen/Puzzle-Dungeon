@@ -63,5 +63,14 @@ namespace PuzzleDungeon.Player
         {
             return new List<ItemData>(_items);
         }
+
+        /// <summary>
+        /// Vide l'inventaire complet.
+        /// </summary>
+        public void ClearInventory()
+        {
+            _items.Clear();
+            OnInventoryChanged?.Invoke();
+        }
     }
 }

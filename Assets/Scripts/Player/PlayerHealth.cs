@@ -146,6 +146,15 @@ namespace PuzzleDungeon.Player
             OnHealthChanged?.Invoke(_currentHealth, _maxHealth);
         }
 
+        /// <summary>
+        /// Restaure la vie silencieusement (utilisé par le système de sauvegarde).
+        /// </summary>
+        public void RestoreHealth(int amount)
+        {
+            _currentHealth = Mathf.Clamp(amount, 0, _maxHealth);
+            OnHealthChanged?.Invoke(_currentHealth, _maxHealth);
+        }
+
         private void Die()
         {
             OnDeath?.Invoke();
