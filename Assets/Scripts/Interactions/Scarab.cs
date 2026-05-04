@@ -122,6 +122,16 @@ namespace PuzzleDungeon.Interactions
             if (_lifetime >= _maxLifetime) Explode();
         }
 
+        public void ResetLifetime(float newMaxLifetime = -1f)
+        {
+            _lifetime = 0f;
+            if (newMaxLifetime > 0)
+            {
+                _maxLifetime = newMaxLifetime;
+            }
+            Debug.Log($"[Scarab] Timer reset! New Max: {_maxLifetime}");
+        }
+
         private void UpdateSensors()
         {
             if (_sensorBeams == null) return;
@@ -236,14 +246,31 @@ namespace PuzzleDungeon.Interactions
 
             // 4. Détection de collision manuelle (Bulletproof)
             float moveDistance = _forwardSpeed * Time.deltaTime;
-            RaycastHit hit;
-            if (Physics.SphereCast(transform.position, 0.2f, transform.forward, out hit, moveDistance + 0.1f))
+            
+            // On inclut le layer 2 (Ignore Raycast) dans le mask pour être sûr de ne rater aucun anneau
+            int layerMask = Physics.DefaultRaycastLayers | (1 << 2);
+            RaycastHit[] hits = Physics.SphereCastAll(transform.position, 0.2f, transform.forward, moveDistance + 0.1f, layerMask, QueryTriggerInteraction.Collide);
+            
+            System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
+
+            foreach (var hit in hits)
             {
                 // On ignore seulement si c'est le joueur (l'owner)
-                if (_owner == null || !hit.collider.transform.IsChildOf(_owner)) 
+                if (_owner != null && hit.collider.transform.IsChildOf(_owner)) continue;
+
+                ScarabRing ring = hit.collider.GetComponentInParent<ScarabRing>();
+                if (ring != null)
                 {
-                    HandleImpact(hit.collider);
-                    return; 
+                    ring.TriggerPassage(this);
+                }
+                else
+                {
+                    // On ne s'écrase pas sur les autres objets en "Ignore Raycast"
+                    if (hit.collider.gameObject.layer != 2) 
+                    {
+                        HandleImpact(hit.collider);
+                        return; 
+                    }
                 }
             }
 
@@ -267,6 +294,9 @@ namespace PuzzleDungeon.Interactions
             
             // Sécurité supplémentaire : si c'est l'owner, on ignore
             if (_owner != null && other.transform.IsChildOf(_owner)) return;
+
+            // Si c'est un anneau du mini-jeu, on passe à travers sans exploser
+            if (other.GetComponentInParent<ScarabRing>() != null) return;
 
             // Détection des cibles (sur l'objet lui-même ou ses parents)
             ScarabTarget target = other.GetComponentInParent<ScarabTarget>();
