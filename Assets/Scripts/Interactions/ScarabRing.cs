@@ -7,6 +7,7 @@ namespace PuzzleDungeon.Interactions
     {
         [Header("Settings")]
         [SerializeField] private MeshRenderer _ringRenderer;
+        [SerializeField] private Collider _ringCollider;
         
         public event Action<ScarabRing, Scarab> OnPassedThrough;
         private bool _isActive = false;
@@ -14,6 +15,7 @@ namespace PuzzleDungeon.Interactions
         private void Awake()
         {
             if (_ringRenderer == null) _ringRenderer = GetComponentInChildren<MeshRenderer>();
+            if (_ringCollider == null) _ringCollider = GetComponentInChildren<Collider>();
         }
 
         public void SetState(bool isNext, bool isUpcoming, Material nextMat, Material upcomingMat)
@@ -23,18 +25,21 @@ namespace PuzzleDungeon.Interactions
             if (isNext)
             {
                 _ringRenderer.enabled = true;
+                if (_ringCollider != null) _ringCollider.enabled = true;
                 _ringRenderer.material = nextMat;
                 _isActive = true;
             }
             else if (isUpcoming)
             {
                 _ringRenderer.enabled = true;
+                if (_ringCollider != null) _ringCollider.enabled = true;
                 _ringRenderer.material = upcomingMat;
                 _isActive = false;
             }
             else
             {
                 _ringRenderer.enabled = false;
+                if (_ringCollider != null) _ringCollider.enabled = false;
                 _isActive = false;
             }
         }

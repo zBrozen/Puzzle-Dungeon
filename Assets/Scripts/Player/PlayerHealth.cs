@@ -38,6 +38,7 @@ namespace PuzzleDungeon.Player
         private PlayerController _playerController;
         private Renderer[] _blinkRenderers;
         private Color[] _originalColors;
+        private Coroutine _invulnerabilityCoroutine;
 
         // Points de sauvegarde / respawn
         private Vector3 _respawnPosition;
@@ -115,14 +116,19 @@ namespace PuzzleDungeon.Player
 
         public void TakeDamage(int damage, DamageType type = DamageType.Enemy)
         {
-            if (_isInvulnerable || _currentHealth <= 0) return;
+            // Le vide outrepasse l'invulnérabilité pour forcer le respawn et les visuels,
+            // mais on ne prend des dégâts que si on n'était pas déjà invulnérable.
+            if (type != DamageType.Void && (_isInvulnerable || _currentHealth <= 0)) return;
+            if (type == DamageType.Void && _currentHealth <= 0) return;
 
-            _currentHealth -= damage;
-            
-            // Sécurité pour ne pas descendre en dessous de 0
-            _currentHealth = Mathf.Max(_currentHealth, 0); 
+            bool wasInvulnerable = _isInvulnerable;
+            if (!wasInvulnerable)
+            {
+                _currentHealth -= damage;
+                _currentHealth = Mathf.Max(_currentHealth, 0); 
+                OnHealthChanged?.Invoke(_currentHealth, _maxHealth);
+            }
 
-            OnHealthChanged?.Invoke(_currentHealth, _maxHealth);
             OnTakeDamage?.Invoke(type);
 
             if (_currentHealth <= 0)
@@ -131,8 +137,9 @@ namespace PuzzleDungeon.Player
             }
             else
             {
-                // On lance l'invulnérabilité en précisant si c'est une chute dans le vide ou non
-                StartCoroutine(InvulnerabilityRoutine(type == DamageType.Void));
+                // On relance le clignotement (en arrêtant le précédent s'il existe)
+                if (_invulnerabilityCoroutine != null) StopCoroutine(_invulnerabilityCoroutine);
+                _invulnerabilityCoroutine = StartCoroutine(InvulnerabilityRoutine(type == DamageType.Void));
             }
         }
 
@@ -183,8 +190,9 @@ namespace PuzzleDungeon.Player
             // On lance la séquence de blocage + animation de réapparition
             StartRespawnSequence();
             
-            // Invulnérabilité "invisible" après un respawn
-            StartCoroutine(InvulnerabilityRoutine(true));
+            // Invulnérabilité + clignotement après un respawn
+            if (_invulnerabilityCoroutine != null) StopCoroutine(_invulnerabilityCoroutine);
+            _invulnerabilityCoroutine = StartCoroutine(InvulnerabilityRoutine(true));
         }
 
         /// <summary>

@@ -244,20 +244,21 @@ namespace PuzzleDungeon.Player
         {
             // Détection pour l'état visuel (animations) : on veut rester "grounded" sur les petites marches
             // pour éviter de déclencher l'anim de chute à chaque petit dénivelé.
+            // On inclut _climbableLayer pour éviter de passer en état "Fall" quand on est sur un rebord.
             float visualCheckDist = (_velocity.y > 0.1f) ? 0.2f : (_stepHeight + 0.15f);
-            bool raycastVisualGrounded = Physics.Raycast(transform.position + Vector3.up * 0.1f, Vector3.down, visualCheckDist, _groundLayer);
+            bool raycastVisualGrounded = Physics.Raycast(transform.position + Vector3.up * 0.1f, Vector3.down, visualCheckDist, _groundLayer | _climbableLayer);
             
-            _isGrounded = _controller.isGrounded || raycastVisualGrounded;
+            // Détection pour la physique : on ne reset la vélocité que si on est réellement sur un sol horizontal.
+            // On ignore le isGrounded du controller si on tombe vite (évite de considérer les murs comme du sol).
+            bool raycastPhysicalGrounded = Physics.Raycast(transform.position + Vector3.up * 0.1f, Vector3.down, 0.25f, _groundLayer | _climbableLayer);
+            bool isPhysicallyGrounded = raycastPhysicalGrounded || (_controller.isGrounded && _velocity.y > -1.0f);
+
+            _isGrounded = isPhysicallyGrounded || raycastVisualGrounded;
 
             if (!_isGrounded)
             {
                 _currentRunTime = 0f;
             }
-
-            // Détection pour la physique : on ne reset la vélocité que si on est réellement proche du sol.
-            // Si on est dans le "vide" d'une marche descendante, on laisse la gravité agir normalement
-            // pour que le personnage "tombe" physiquement sur la marche suivante au lieu de flotter.
-            bool isPhysicallyGrounded = _controller.isGrounded || Physics.Raycast(transform.position + Vector3.up * 0.1f, Vector3.down, 0.25f, _groundLayer);
 
             if (isPhysicallyGrounded && _velocity.y < 0)
             {
@@ -273,20 +274,22 @@ namespace PuzzleDungeon.Player
             
             if (_currentState == PlayerState.Attack) return;
 
-            // On ne change la direction de mouvement QUE si on est au sol ET qu'on ne roule/saute pas
-            // (pendant la roulade ou le déclenchement du saut, la direction est préservée)
-            if (_isGrounded && _currentState != PlayerState.Roll && _currentState != PlayerState.Jump)
-            {
-                Transform camTransform = Camera.main.transform;
-                Vector3 camForward = camTransform.forward;
-                Vector3 camRight = camTransform.right;
-                
-                camForward.y = 0;
-                camRight.y = 0;
-                camForward.Normalize();
-                camRight.Normalize();
+            Transform camTransform = Camera.main.transform;
+            Vector3 camForward = camTransform.forward;
+            Vector3 camRight = camTransform.right;
+            
+            camForward.y = 0;
+            camRight.y = 0;
+            camForward.Normalize();
+            camRight.Normalize();
 
-                _currentMoveDirection = (camForward * vertical + camRight * horizontal).normalized;
+            Vector3 targetDir = (camForward * vertical + camRight * horizontal).normalized;
+
+            // On ne change la direction de mouvement QUE si on est au sol ET qu'on ne roule/saute/tombe pas
+            // (pendant la roulade, le saut ou la chute, la direction est verrouillée pour simuler l'absence de air control)
+            if (_isGrounded && _currentState != PlayerState.Roll && _currentState != PlayerState.Jump && _currentState != PlayerState.Fall)
+            {
+                _currentMoveDirection = targetDir;
             }
 
             if (_currentMoveDirection.magnitude >= 0.01f)
@@ -317,11 +320,14 @@ namespace PuzzleDungeon.Player
                 float speed = _isAutoJumpingToTarget ? 1f : (_isGrounded ? groundSpeed : _moveSpeed * airMultiplier);
                 _controller.Move(_currentMoveDirection * speed * Time.deltaTime);
 
-                // Rotation : on ne tourne que si on est au sol (ou très peu en l'air)
-                if (_isGrounded)
+                // Rotation : on ne tourne que si on est au sol et qu'on a le contrôle
+                if (_isGrounded && _currentState != PlayerState.Roll && _currentState != PlayerState.Jump && _currentState != PlayerState.Fall)
                 {
-                    Quaternion targetRotation = Quaternion.LookRotation(_currentMoveDirection);
-                    transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, _rotationSpeed * Time.deltaTime);
+                    if (_currentMoveDirection.magnitude >= 0.01f)
+                    {
+                        Quaternion targetRotation = Quaternion.LookRotation(_currentMoveDirection);
+                        transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, _rotationSpeed * Time.deltaTime);
+                    }
                 }
             }
             else
@@ -671,6 +677,7 @@ namespace PuzzleDungeon.Player
             _currentMoveDirection = Vector3.zero;
             _isAutoJumpingToTarget = false;
             _currentState = PlayerState.Idle;
+            _fallPeakY = transform.position.y; // Reset de la hauteur de chute
             _controller.enabled = true;
 
             // Fait sauter la caméra instantanément à la nouvelle position
