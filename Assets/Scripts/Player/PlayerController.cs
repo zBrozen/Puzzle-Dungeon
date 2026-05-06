@@ -492,7 +492,9 @@ namespace PuzzleDungeon.Player
             // Position approximative devant le joueur pour la zone d'impact
             Vector3 hitCenter = transform.position + Vector3.up * 1f + transform.forward * (_attackHitRange / 2f);
             
-            Collider[] hits = Physics.OverlapSphere(hitCenter, _attackHitRadius, _enemyLayer);
+            // Inclure _interactableLayer pour pouvoir taper sur les interrupteurs à épée
+            LayerMask hitLayers = _enemyLayer | _interactableLayer;
+            Collider[] hits = Physics.OverlapSphere(hitCenter, _attackHitRadius, hitLayers);
             
             // DEBUG: Décommentez pour voir si la fonction est bien appelée
             // Debug.Log($"[Combat] Coup porté ! Objets détectés dans la zone : {hits.Length}");
@@ -504,6 +506,12 @@ namespace PuzzleDungeon.Player
                 {
                     enemyHealth.TakeDamage(_attackDamage);
                     Debug.Log($"[Combat] Ennemi touché : {hit.name}");
+                }
+                // Vérifier si la cible est un objet interactif (ex: interrupteur)
+                else if (hit.TryGetComponent(out PuzzleDungeon.Interactions.IHittable hittable))
+                {
+                    hittable.OnHit();
+                    Debug.Log($"[Combat] Objet touché : {hit.name}");
                 }
             }
         }
