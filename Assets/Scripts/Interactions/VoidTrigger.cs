@@ -1,5 +1,6 @@
 using UnityEngine;
 using PuzzleDungeon.Player;
+using UnityEngine.Events;
 
 namespace PuzzleDungeon.Interactions
 {
@@ -20,6 +21,9 @@ namespace PuzzleDungeon.Interactions
         [SerializeField, Tooltip("Particules jouées au point d'apparition (optionnel).")]
         private ParticleSystem _respawnParticles;
 
+        [Header("Events")]
+        public UnityEvent onVoidEnter;
+
         private void Awake()
         {
             Collider col = GetComponent<Collider>();
@@ -33,6 +37,9 @@ namespace PuzzleDungeon.Interactions
         {
             if (other.TryGetComponent(out PlayerController player))
             {
+                // Trigger the reset event
+                onVoidEnter?.Invoke();
+
                 // 1. Téléporter d'abord au bord (spawn local du VoidTrigger)
                 RespawnPlayer(player);
 
