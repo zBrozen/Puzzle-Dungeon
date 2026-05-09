@@ -16,10 +16,7 @@ public class ColorGridManager : MonoBehaviour
     [Header("Settings")]
     public Material[] colorMaterials;
     public GameObject buttonVisualPrefab;
-    public GameObject whitePlatformPrefab;
-
-    [Header("References")]
-    public Transform whitePlatformSpawnPoint;
+    public GameObject whitePlatform; 
 
     private ColorBlock[,] grid; 
     private ColorBlock currentBlock;
@@ -33,6 +30,7 @@ public class ColorGridManager : MonoBehaviour
     void Start()
     {
         Random.InitState((int)System.DateTime.Now.Ticks);
+        if (whitePlatform != null) whitePlatform.SetActive(false);
         SetupManualGrid();
     }
 
@@ -89,18 +87,15 @@ public class ColorGridManager : MonoBehaviour
                     if (colors[c, l] == -1) {
                         List<int> valid = new List<int>();
                         for (int i = 0; i < colorCount; i++) {
-                            // Rule: Max 4 blocks per color
                             if (IsDiagonalSafe(c, l, i, colors) && counts[i] < 4) 
                                 valid.Add(i);
                         }
 
                         int chosen = -1;
                         if (valid.Count > 0) {
-                            // Prioritize colors with < 2 blocks
                             foreach (int v in valid) if (counts[v] < 2) { chosen = v; break; }
                             if (chosen == -1) chosen = valid[Random.Range(0, valid.Count)];
                         } else {
-                            // If no safe color under 4, pick any safe color regardless of count
                             for (int i = 0; i < colorCount; i++)
                                 if (IsDiagonalSafe(c, l, i, colors)) { chosen = i; break; }
                             if (chosen == -1) chosen = Random.Range(0, colorCount);
@@ -129,7 +124,12 @@ public class ColorGridManager : MonoBehaviour
 
                     if (c == buttonPos.x && l == buttonPos.y) {
                         if (buttonVisualPrefab != null) {
-                            GameObject btn = Instantiate(buttonVisualPrefab, grid[c, l].transform.position + Vector3.up * 0.1f, Quaternion.identity, grid[c, l].transform);
+                            // Calculate top surface of the mesh for perfect placement
+                            float topY = grid[c, l].meshRenderer.bounds.max.y;
+                            Vector3 spawnPos = grid[c, l].transform.position;
+                            spawnPos.y = topY + 0.01f; // Slight offset to avoid Z-fighting
+
+                            GameObject btn = Instantiate(buttonVisualPrefab, spawnPos, Quaternion.identity, grid[c, l].transform);
                             btn.name = "ButtonVisual";
                         }
                     }
@@ -209,6 +209,7 @@ public class ColorGridManager : MonoBehaviour
         usedColors.Clear();
         currentBlock = null;
         buttonPressed = false;
+        if (whitePlatform != null) whitePlatform.SetActive(false);
         for (int c = 0; c < totalColumns; c++)
             for (int l = 0; l < totalLines; l++)
                 if (grid[c, l] != null) { grid[c, l].Rise(); grid[c, l].SetAsCurrent(false); }
@@ -218,7 +219,6 @@ public class ColorGridManager : MonoBehaviour
     {
         if (buttonPressed) return;
         buttonPressed = true;
-        if (whitePlatformPrefab != null && whitePlatformSpawnPoint != null)
-            Instantiate(whitePlatformPrefab, whitePlatformSpawnPoint.position, Quaternion.identity);
+        if (whitePlatform != null) whitePlatform.SetActive(true);
     }
 }

@@ -1129,24 +1129,29 @@ namespace PuzzleDungeon.Player
             // On rengaine l'épée automatiquement car le joueur a besoin de ses mains
             if (_isWeaponDrawn) SheatheWeapon();
 
-            // Calcul de la direction basée sur la position relative (Joueur -> Bloc)
-            // Cela garantit qu'on pousse le bloc "loin de soi" sur l'axe le plus logique
-            Vector3 directionToBlock = hit.transform.position - transform.position;
-            directionToBlock.y = 0; // On ignore la hauteur
-
-            // Conversion de la direction en espace local du bloc pour respecter sa rotation
-            Vector3 localDir = hit.transform.InverseTransformDirection(directionToBlock);
-
+            // Calcul de la direction basée sur la normale de la face touchée
+            // Cela garantit qu'on pousse le bloc perpendiculairement à la face, 
+            // peu importe si le joueur est sur le bord ou au centre de cette face.
+            Vector3 localNormal = hit.transform.InverseTransformDirection(hit.normal);
             Vector3 localPushDir = Vector3.zero;
 
-            // On trouve l'axe local le plus fort
-            if (Mathf.Abs(localDir.x) > Mathf.Abs(localDir.z))
+            float absX = Mathf.Abs(localNormal.x);
+            float absY = Mathf.Abs(localNormal.y);
+            float absZ = Mathf.Abs(localNormal.z);
+
+            // On trouve l'axe local le plus fort de la NORMALE (inversée)
+            // Cela gère correctement les blocs importés de Blender (avec rotation sur X ou Z)
+            if (absX > absY && absX > absZ)
             {
-                localPushDir = new Vector3(localDir.x > 0 ? 1 : -1, 0, 0);
+                localPushDir = new Vector3(localNormal.x > 0 ? -1 : 1, 0, 0);
+            }
+            else if (absY > absX && absY > absZ)
+            {
+                localPushDir = new Vector3(0, localNormal.y > 0 ? -1 : 1, 0);
             }
             else
             {
-                localPushDir = new Vector3(0, 0, localDir.z > 0 ? 1 : -1);
+                localPushDir = new Vector3(0, 0, localNormal.z > 0 ? -1 : 1);
             }
 
             // On repasse en espace global
@@ -1154,21 +1159,31 @@ namespace PuzzleDungeon.Player
             pushDir.y = 0; // Sécurité
             pushDir.Normalize();
 
+            // On essaie de récupérer le composant PushableBlock
+            hit.collider.TryGetComponent(out PushableBlock block);
+
+            // Si le bloc glisse déjà rapidement sur la glace, on ne peut pas interagir avec
+            if (block != null && block.IsSlidingOnIce) return;
+
             // Calcul de la vitesse de poussée
             float finalPushSpeed = _moveSpeed * _pushStrength;
             
             // Si le bloc a une résistance spécifique, on l'applique
-            if (hit.collider.TryGetComponent(out PushableBlock block))
+            if (block != null)
             {
                 // Plus la résistance est haute, plus c'est lent (vitesse / résistance)
                 finalPushSpeed /= block.PushResistance;
             }
 
-            // On applique la force sur l'axe choisi
-            body.linearVelocity = pushDir * finalPushSpeed;
+            // On applique la force sur l'axe choisi, sauf si le bloc est sur la glace 
+            // (on laisse le BigPush s'occuper de la propulsion sur la glace)
+            if (block == null || !block.IsOnIce)
+            {
+                body.linearVelocity = pushDir * finalPushSpeed;
+            }
 
-            // Détection de bord pour le BigPush
-            if (block != null && block.IsNearEdge(pushDir))
+            // Détection de bord pour le BigPush ou Glace
+            if (block != null && (block.IsNearEdge(pushDir) || block.IsOnIce))
             {
                 StartCoroutine(BigPushRoutine(block, pushDir));
             }
@@ -1181,6 +1196,11 @@ namespace PuzzleDungeon.Player
 
         private System.Collections.IEnumerator BigPushRoutine(PushableBlock block, Vector3 direction)
         {
+            if (block != null)
+            {
+                Debug.Log($"[Interaction Bloc] Poussée forte déclenchée. Le bloc est-il sur de la glace ? {block.IsOnIce}");
+            }
+
             _currentState = PlayerState.BigPush;
             IsLocked = true;
 
