@@ -68,9 +68,25 @@ namespace PuzzleDungeon.Systems.Runs
 
             Debug.Log($"[RunManager] Applying Configuration: {config.ConfigurationID}");
 
+            // 1. Appliquer les variations de la configuration principale
             foreach (var variation in config.Variations)
             {
                 ApplyVariation(variation);
+            }
+
+            // 2. Appliquer les configurations de décor liées
+            if (config.DecorConfigs != null)
+            {
+                foreach (var decorConfig in config.DecorConfigs)
+                {
+                    if (decorConfig == null) continue;
+
+                    Debug.Log($"[RunManager] Applying Decor Configuration: {decorConfig.name}");
+                    foreach (var variation in decorConfig.Variations)
+                    {
+                        ApplyVariation(variation);
+                    }
+                }
             }
         }
 

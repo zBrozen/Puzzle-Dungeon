@@ -11,7 +11,7 @@ namespace PuzzleDungeon.Player
         public event Action OnSheatheWeapon;
         public event Action<int> OnAttackAction;
         
-        public enum PlayerState { Idle, Move, Jump, Fall, Land, Climb, Push, BigPush, HardLand, Roll, Attack, Hurt, Treasure }
+        public enum PlayerState { Idle, Move, Jump, Fall, Land, Climb, Push, BigPush, HardLand, Roll, Attack, Hurt, Treasure, IntroFall }
 
         [Header("Movement Settings")]
         [SerializeField] private float _moveSpeed = 5f;
@@ -99,6 +99,11 @@ namespace PuzzleDungeon.Player
         
         [SerializeField] private float _pushStrength = 0.5f;
 
+        [Header("Intro Settings")]
+        [SerializeField] private float _introFallSpeed = 1.5f;
+        [SerializeField] private float _introStartHeight = 20f;
+        [SerializeField] private float _introCameraOrbitSpeed = 30f;
+
         [Header("Interaction Settings")]
         [SerializeField] private KeyCode _interactKey = KeyCode.F;
         [SerializeField] private float _interactRange = 2f;
@@ -131,6 +136,7 @@ namespace PuzzleDungeon.Player
         private bool _isDrawingWeapon = false;
         private PlayerHealth _playerHealth;
         private PlayerInventory _inventory;
+        private PlayerAudio _playerAudio;
 
         public PlayerState CurrentState => _currentState;
         public float MovementSpeed => new Vector2(_controller.velocity.x, _controller.velocity.z).magnitude;
@@ -165,6 +171,7 @@ namespace PuzzleDungeon.Player
 
             _playerHealth = GetComponent<PlayerHealth>();
             _inventory = GetComponent<PlayerInventory>();
+            _playerAudio = GetComponent<PlayerAudio>();
             
             if (_playerHealth != null) _playerHealth.OnTakeDamage += HandleTakeDamage;
             if (_inventory != null) _inventory.OnInventoryChanged += RefreshVisualItems;
@@ -227,10 +234,14 @@ namespace PuzzleDungeon.Player
                 if (_isGrounded) _currentMoveDirection = Vector3.zero;
             }
 
-            if (_currentState != PlayerState.Climb)
+            if (_currentState != PlayerState.Climb && _currentState != PlayerState.IntroFall)
             {
                 ApplyGravity();
                 UpdateState();
+            }
+            else if (_currentState == PlayerState.IntroFall)
+            {
+                HandleIntroFall();
             }
 
             // Empêche de rester sur la tête des ennemis
@@ -246,11 +257,11 @@ namespace PuzzleDungeon.Player
             // pour éviter de déclencher l'anim de chute à chaque petit dénivelé.
             // On inclut _climbableLayer pour éviter de passer en état "Fall" quand on est sur un rebord.
             float visualCheckDist = (_velocity.y > 0.1f) ? 0.2f : (_stepHeight + 0.15f);
-            bool raycastVisualGrounded = Physics.Raycast(transform.position + Vector3.up * 0.1f, Vector3.down, visualCheckDist, _groundLayer | _climbableLayer);
+            bool raycastVisualGrounded = Physics.Raycast(transform.position + Vector3.up * 0.1f, Vector3.down, visualCheckDist, _groundLayer | _climbableLayer | _interactableLayer);
             
             // Détection pour la physique : on ne reset la vélocité que si on est réellement sur un sol horizontal.
             // On ignore le isGrounded du controller si on tombe vite (évite de considérer les murs comme du sol).
-            bool raycastPhysicalGrounded = Physics.Raycast(transform.position + Vector3.up * 0.1f, Vector3.down, 0.25f, _groundLayer | _climbableLayer);
+            bool raycastPhysicalGrounded = Physics.Raycast(transform.position + Vector3.up * 0.1f, Vector3.down, 0.25f, _groundLayer | _climbableLayer | _interactableLayer);
             bool isPhysicallyGrounded = raycastPhysicalGrounded || (_controller.isGrounded && _velocity.y > -1.0f);
 
             _isGrounded = isPhysicallyGrounded || raycastVisualGrounded;
@@ -579,6 +590,8 @@ namespace PuzzleDungeon.Player
 
             _sheatheTimer = _autoSheatheDelay; // reset timer
 
+            if (_playerAudio != null) _playerAudio.PlayAttackSFX();
+
             if (_comboTimer > 0f)
             {
                 _currentComboStep++;
@@ -642,6 +655,8 @@ namespace PuzzleDungeon.Player
             
             if (_isWeaponDrawn) SheatheWeapon(); // Force le rengainement
             
+            if (_playerAudio != null) _playerAudio.PlayJumpSFX();
+
             _fallPeakY = transform.position.y;
             _velocity.y = Mathf.Sqrt(_jumpForce * -2f * _gravity);
             _currentState = PlayerState.Jump;
@@ -695,6 +710,65 @@ namespace PuzzleDungeon.Player
             }
         }
 
+        public void StartIntro(Vector3 spawnPosition, Quaternion spawnRotation)
+        {
+            _controller.enabled = false;
+            transform.position = spawnPosition + Vector3.up * _introStartHeight;
+            transform.rotation = spawnRotation;
+            Physics.SyncTransforms();
+            
+            _velocity = Vector3.zero;
+            _currentState = PlayerState.IntroFall;
+            _controller.enabled = true;
+            IsLocked = true;
+
+            // Bloquer l'input caméra
+            if (Camera.main != null && Camera.main.TryGetComponent(out CameraController cam))
+            {
+                cam.IsInputDisabled = true;
+            }
+
+            Debug.Log($"[PlayerController] Starting Intro at {transform.position}");
+        }
+
+        private void HandleIntroFall()
+        {
+            // Chute lente
+            _controller.Move(Vector3.down * _introFallSpeed * Time.deltaTime);
+
+            // Traveling caméra (on fait tourner la caméra autour du joueur)
+            if (Camera.main != null && Camera.main.TryGetComponent(out CameraController cam))
+            {
+                cam.AddOrbitRotation(_introCameraOrbitSpeed * Time.deltaTime, 0);
+            }
+
+            // Vérification de l'atterrissage
+            if (_controller.isGrounded)
+            {
+                Debug.Log("[PlayerController] Intro finished, landing.");
+                StartCoroutine(IntroLandRoutine());
+            }
+        }
+
+        private System.Collections.IEnumerator IntroLandRoutine()
+        {
+            _currentState = PlayerState.Land;
+            _fallPeakY = transform.position.y; // Reset pour éviter un double déclenchement de roulade
+            IsLocked = true;
+
+            // Laisser un court instant pour l'animation d'atterrissage normale
+            yield return new WaitForSeconds(0.5f);
+
+            IsLocked = false;
+            _currentState = PlayerState.Idle;
+
+            // Débloquer l'input caméra
+            if (Camera.main != null && Camera.main.TryGetComponent(out CameraController cam))
+            {
+                cam.IsInputDisabled = false;
+            }
+        }
+
         private void HandleAutoJump()
         {
             if (_isAutoJumpingToTarget)
@@ -735,13 +809,20 @@ namespace PuzzleDungeon.Player
             if (Vector3.Dot(moveDirection, _currentMoveDirection) < 0.5f) return;
 
             // --- GESTION AMELIOREE DES MARCHES ET DU VIDE ---
-            LayerMask obstacleMask = _groundLayer | _climbableLayer | 1;
+            LayerMask obstacleMask = _groundLayer | _climbableLayer | _interactableLayer | 1;
+
+            Vector3 waistOrigin = transform.position + Vector3.up * 0.8f; 
+            float wallCheckRadius = _controller.radius * 0.8f;
+
+            // 0. Vérification spécifique pour les interactables : on ne saute JAMAIS automatiquement vers/sur un interactable.
+            // On utilise un SphereCast pour détecter les blocs même s'ils sont légèrement décalés.
+            if (Physics.SphereCast(waistOrigin, wallCheckRadius, moveDirection, out RaycastHit interactHit, _jumpObstacleCheckDistance * 1.5f, _interactableLayer))
+            {
+                return;
+            }
 
             // 1. Vérifier si un obstacle (mur, bloc, grosse marche) est devant nous.
             // On utilise SphereCastAll pour détecter les murs même en diagonale, tout en ignorant le sol.
-            Vector3 waistOrigin = transform.position + Vector3.up * 0.8f; 
-            float wallCheckRadius = _controller.radius * 0.8f;
-            
             RaycastHit[] wallHits = Physics.SphereCastAll(waistOrigin, wallCheckRadius, moveDirection, _jumpObstacleCheckDistance, obstacleMask);
             foreach (var hit in wallHits)
             {
@@ -801,7 +882,7 @@ namespace PuzzleDungeon.Player
 
             // Pour éviter les bugs où le CharacterController se croit au sol sur une micro-corniche du mur,
             // on vérifie avec un Raycast strict vers le bas. On inclut la couche climbable.
-            bool trueGrounded = Physics.Raycast(transform.position + Vector3.up * 0.1f, Vector3.down, 0.3f, _groundLayer | _climbableLayer);
+            bool trueGrounded = Physics.Raycast(transform.position + Vector3.up * 0.1f, Vector3.down, 0.3f, _groundLayer | _climbableLayer | _interactableLayer);
 
             // On peut grimper si :
             // 1. On appuie sur la touche (manuel, souvent utilisé au sol)
@@ -812,6 +893,14 @@ namespace PuzzleDungeon.Player
             {
                 if (CheckForClimbableLedge(out Vector3 targetPos, out Vector3 wallNormal))
                 {
+                    // Empêche l'accroche AUTOMATIQUE sur les objets interactables (ex: cubes)
+                    // On n'autorise la grimpe sur ces objets que si le joueur appuie manuellement sur la touche.
+                    bool isManualInput = Input.GetKeyDown(_climbKey);
+                    if (!isManualInput && Physics.CheckSphere(targetPos, 0.3f, _interactableLayer))
+                    {
+                        return;
+                    }
+
                     StartCoroutine(ClimbRoutine(targetPos, wallNormal));
                 }
             }
@@ -888,7 +977,7 @@ namespace PuzzleDungeon.Player
                     if (height > minHeight && height <= currentMaxHeight)
                     {
                         // On vérifie qu'il n'y a pas de plafond au-dessus
-                        if (!Physics.Raycast(ledgeHit.point + Vector3.up * 0.1f, Vector3.up, 1.8f, _groundLayer | _climbableLayer))
+                        if (!Physics.Raycast(ledgeHit.point + Vector3.up * 0.1f, Vector3.up, 1.8f, _groundLayer | _climbableLayer | _interactableLayer))
                         {
                             // On cherche la normale exacte du mur pour valider que c'est une face verticale
                             Vector3 wallCheckStart = ledgeHit.point + Vector3.down * 0.1f - flatDirection * 0.5f;
@@ -916,6 +1005,8 @@ namespace PuzzleDungeon.Player
             _currentState = PlayerState.Climb;
             _velocity = Vector3.zero;
             
+            if (_playerAudio != null) _playerAudio.PlayClimbSFX();
+
             Debug.Log($"[Climb] Start. Target Ledge Y: {targetPos.y} | Player Y: {transform.position.y}");
 
             // On désactive le controller pour manipuler le transform librement
@@ -1226,10 +1317,18 @@ namespace PuzzleDungeon.Player
         private System.Collections.IEnumerator HardLandRoutine()
         {
             _currentState = PlayerState.HardLand;
+            IsLocked = true;
 
             yield return new WaitForSeconds(_hardLandDuration);
 
+            IsLocked = false;
             _currentState = PlayerState.Idle;
+
+            // Débloquer l'input caméra au cas où on vient de l'intro
+            if (Camera.main != null && Camera.main.TryGetComponent(out CameraController cam))
+            {
+                cam.IsInputDisabled = false;
+            }
         }
 
         // Propriété publique pour savoir si le bonus de roulade est actif (utile pour debug ou UI)
@@ -1239,6 +1338,8 @@ namespace PuzzleDungeon.Player
         {
             // Le vide (Void) gère son propre système de blocage, on n'ajoute pas de stun ici
             if (type == DamageType.Void) return;
+
+            if (_playerAudio != null) _playerAudio.PlayHurtSFX();
 
             if (_hurtCoroutine != null) StopCoroutine(_hurtCoroutine);
             _hurtCoroutine = StartCoroutine(HurtStunRoutine());

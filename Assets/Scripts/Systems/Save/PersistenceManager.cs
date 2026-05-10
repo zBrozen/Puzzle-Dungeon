@@ -4,6 +4,7 @@ using System.Linq;
 using PuzzleDungeon.Player;
 using PuzzleDungeon.Interactions;
 using PuzzleDungeon.Systems.Runs;
+using UnityEngine.SceneManagement;
 
 namespace PuzzleDungeon.Systems.Save
 {
@@ -13,6 +14,7 @@ namespace PuzzleDungeon.Systems.Save
 
         [Header("References")]
         [SerializeField] private List<ItemData> _allPossibleItems = new List<ItemData>();
+        [SerializeField] private List<RunConfiguration> _availableConfigs = new List<RunConfiguration>();
 
         [Header("Status")]
         [SerializeField] private int _currentSlot = -1;
@@ -34,20 +36,30 @@ namespace PuzzleDungeon.Systems.Save
             }
         }
 
+        private void OnEnable()
+        {
+            SceneManager.sceneLoaded += OnSceneLoaded;
+        }
+
+        private void OnDisable()
+        {
+            SceneManager.sceneLoaded -= OnSceneLoaded;
+        }
+
+        private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
+        {
+            // On n'applique les données que si on est dans une scène de jeu (pas le menu principal)
+            if (scene.name != "MainMenu" && _currentSlot != -1)
+            {
+                Debug.Log($"[PersistenceManager] Scene {scene.name} loaded. Applying data...");
+                ApplyDataToGame();
+            }
+        }
+
         private void Start()
         {
-            // Au lancement du jeu, on s'assure qu'un slot est toujours actif.
-            // On utilise le slot 0 par défaut.
-            if (SaveSystem.HasSave(0))
-            {
-                Debug.Log("[PersistenceManager] Auto-loading Slot 0 on startup.");
-                LoadGame(0);
-            }
-            else
-            {
-                Debug.Log("[PersistenceManager] No save found. Creating default Save in Slot 0.");
-                NewGame(0, "random");
-            }
+            // Note: Auto-loading removed to allow Main Menu slot selection.
+            // if (SaveSystem.HasSave(0)) { ... }
         }
 
         public void NewGame(int slotIndex, string configID = "random")
@@ -59,14 +71,23 @@ namespace PuzzleDungeon.Systems.Save
             // Randomisation
             if (configID == "random")
             {
+                // On essaye d'abord via le RunManager (si on est déjà en jeu)
                 if (RunManager.Instance != null && RunManager.Instance.AvailableConfigs.Count > 0)
                 {
                     int randomIndex = Random.Range(0, RunManager.Instance.AvailableConfigs.Count);
                     _currentData.runConfigurationID = RunManager.Instance.AvailableConfigs[randomIndex].ConfigurationID;
                 }
+                // Sinon on utilise la liste locale (utile depuis le Menu Principal)
+                else if (_availableConfigs != null && _availableConfigs.Count > 0)
+                {
+                    int randomIndex = Random.Range(0, _availableConfigs.Count);
+                    _currentData.runConfigurationID = _availableConfigs[randomIndex].ConfigurationID;
+                    Debug.Log($"[PersistenceManager] Selected random config from local list: {_currentData.runConfigurationID}");
+                }
                 else
                 {
                     _currentData.runConfigurationID = "default";
+                    Debug.LogWarning("[PersistenceManager] No configurations available for randomization! Falling back to 'default'.");
                 }
             }
             else
@@ -150,7 +171,39 @@ namespace PuzzleDungeon.Systems.Save
                 Quaternion rot = new Quaternion(_currentData.playerRotation[0], _currentData.playerRotation[1], _currentData.playerRotation[2], _currentData.playerRotation[3]);
                 
                 PlayerController pc = health.GetComponent<PlayerController>();
-                if (pc != null) pc.Teleport(pos, rot);
+                if (pc != null)
+                {
+                    // Si c'est une nouvelle partie, on cherche le point de spawn
+                    if (_currentData.isNewGame)
+                    {
+                        PlayerSpawnPoint[] spawnPoints = FindObjectsOfType<PlayerSpawnPoint>();
+                        PlayerSpawnPoint startPoint = null;
+                        
+                        if (spawnPoints.Length > 0)
+                        {
+                            startPoint = spawnPoints.FirstOrDefault(s => s.IsDefault) ?? spawnPoints[0];
+                        }
+
+                        if (startPoint != null)
+                        {
+                            pos = startPoint.transform.position;
+                            rot = startPoint.transform.rotation;
+                            pc.StartIntro(pos, rot);
+                        }
+                        else
+                        {
+                            Debug.LogWarning("[PersistenceManager] No PlayerSpawnPoint found in scene! Spawning at default (0,0,0).");
+                            pc.Teleport(pos, rot);
+                        }
+
+                        _currentData.isNewGame = false;
+                        SaveGame(); // Marquer que ce n'est plus une nouvelle partie
+                    }
+                    else
+                    {
+                        pc.Teleport(pos, rot);
+                    }
+                }
 
                 health.RestoreHealth(_currentData.currentHealth);
             }

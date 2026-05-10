@@ -28,6 +28,7 @@ namespace PuzzleDungeon.Player
         private PlayerController.PlayerState _lastState;
         private int _currentJumpHash;
         private PlayerHealth _playerHealth;
+        private PlayerAudio _playerAudio;
 
         private void Awake()
         {
@@ -36,6 +37,7 @@ namespace PuzzleDungeon.Player
                 _playerController = GetComponentInParent<PlayerController>();
 
             _playerHealth = GetComponentInParent<PlayerHealth>();
+            _playerAudio = GetComponentInParent<PlayerAudio>();
 
             _currentJumpHash = Animator.StringToHash("Jump");
         }
@@ -142,6 +144,14 @@ namespace PuzzleDungeon.Player
 
             if (currentState != _lastState)
             {
+                // Sécurité intro : on force "Fall" et on ne laisse rien d'autre passer
+                if (currentState == PlayerController.PlayerState.IntroFall)
+                {
+                    _animator.CrossFadeInFixedTime("Fall", _transitionDuration);
+                    _lastState = currentState;
+                    return;
+                }
+
                 // Prévenir l'interruption de l'animation de saut par l'animation de chute
                 if (_lastState == PlayerController.PlayerState.Jump && currentState == PlayerController.PlayerState.Fall)
                 {
@@ -175,7 +185,8 @@ namespace PuzzleDungeon.Player
                                  || state == PlayerController.PlayerState.HardLand
                                  || state == PlayerController.PlayerState.Roll
                                  || state == PlayerController.PlayerState.Attack
-                                 || state == PlayerController.PlayerState.Treasure);
+                                 || state == PlayerController.PlayerState.Treasure
+                                 || state == PlayerController.PlayerState.IntroFall);
 
             if (isFullBodyState)
             {
@@ -207,6 +218,9 @@ namespace PuzzleDungeon.Player
                     _currentJumpHash = Animator.StringToHash(stateName);
                     break;
                 case PlayerController.PlayerState.Fall:
+                    stateName = "Fall";
+                    break;
+                case PlayerController.PlayerState.IntroFall:
                     stateName = "Fall";
                     break;
                 case PlayerController.PlayerState.Land:
@@ -261,6 +275,21 @@ namespace PuzzleDungeon.Player
         public void AnimEvent_StoreSword()
         {
             if (_playerController != null) _playerController.AnimEvent_StoreSword();
+        }
+
+        public void AnimEvent_Footstep()
+        {
+            if (_playerAudio != null) _playerAudio.PlayFootstep();
+        }
+
+        public void AnimEvent_StopFootstep()
+        {
+            if (_playerAudio != null) _playerAudio.StopFootstep();
+        }
+
+        public void AnimEvent_StopPlayerSFX()
+        {
+            if (_playerAudio != null) _playerAudio.StopPlayerSFX();
         }
     }
 }

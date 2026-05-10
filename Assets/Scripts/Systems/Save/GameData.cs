@@ -10,6 +10,7 @@ namespace PuzzleDungeon.Systems.Save
         public long lastUpdated;
         public int slotIndex;
         public string runConfigurationID; // Pour l'aspect aléatoire de la run
+        public bool isNewGame = true;
 
         [Header("Player State")]
         public int currentHealth;

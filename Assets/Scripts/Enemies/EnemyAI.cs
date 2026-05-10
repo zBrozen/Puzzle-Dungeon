@@ -60,6 +60,7 @@ namespace PuzzleDungeon.Enemies
         private EnemyHealth _health;
         private Animator _animator;
         private PlayerHealth _playerHealth;
+        private EnemyAudio _enemyAudio;
         
         private EnemyState _currentState = EnemyState.Idle;
         private EnemyState _stateBeforePause = EnemyState.Idle;
@@ -71,6 +72,7 @@ namespace PuzzleDungeon.Enemies
             _agent = GetComponent<NavMeshAgent>();
             _health = GetComponent<EnemyHealth>();
             _animator = GetComponent<Animator>();
+            _enemyAudio = GetComponent<EnemyAudio>();
 
             // Chercher le joueur si non assigné
             if (_playerTransform == null)
@@ -253,6 +255,8 @@ namespace PuzzleDungeon.Enemies
         {
             // S'assurer de faire face au joueur au moment où on déclenche l'attaque
             LookAtPlayer();
+
+            if (_enemyAudio != null) _enemyAudio.PlayAttackSFX();
 
             SetTriggerIfExists(_attackTrigger);
             

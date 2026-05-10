@@ -20,10 +20,12 @@ namespace PuzzleDungeon.Enemies
         private int _currentHealth;
         private bool _isDead = false;
         private Color[] _originalColors;
+        private EnemyAudio _enemyAudio;
 
         private void Awake()
         {
             _currentHealth = _maxHealth;
+            _enemyAudio = GetComponent<EnemyAudio>();
 
             // Essayer de trouver les renderers si non assignés
             if (_meshRenderers == null || _meshRenderers.Length == 0)
@@ -54,6 +56,7 @@ namespace PuzzleDungeon.Enemies
             }
             else
             {
+                if (_enemyAudio != null) _enemyAudio.PlayHurtSFX();
                 OnHurt?.Invoke();
                 if (_enableFlash) StartCoroutine(FlashRoutine(_flashColor, _flashDuration));
             }
@@ -63,6 +66,7 @@ namespace PuzzleDungeon.Enemies
         {
             _isDead = true;
             _currentHealth = 0;
+            if (_enemyAudio != null) _enemyAudio.PlayDeathSFX();
             OnDeath?.Invoke();
         }
 

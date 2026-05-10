@@ -59,6 +59,8 @@ namespace PuzzleDungeon.Player
         private Vector3 _activeFocusTargetOffset;
         private System.Collections.Generic.HashSet<Transform> _focusedTargets = new System.Collections.Generic.HashSet<Transform>();
         private Transform _ignoreTarget;
+        
+        public bool IsInputDisabled { get; set; }
 
         public bool IsTransitioning => _transitionTimer > 0;
 
@@ -86,8 +88,15 @@ namespace PuzzleDungeon.Player
         {
             if (_target == null) return;
             if (_focusTimeRemaining > 0) UpdateFocus();
-            else HandleInput();
+            else if (!IsInputDisabled) HandleInput();
             CalculateCameraPosition();
+        }
+
+        public void AddOrbitRotation(float x, float y)
+        {
+            _currentX += x;
+            _currentY -= y;
+            _currentY = Mathf.Clamp(_currentY, _activeMinAngle, _activeMaxAngle);
         }
 
         private void HandleInput()
