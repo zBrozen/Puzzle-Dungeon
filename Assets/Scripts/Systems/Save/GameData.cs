@@ -4,6 +4,24 @@ using UnityEngine;
 namespace PuzzleDungeon.Systems.Save
 {
     [System.Serializable]
+    public class ObjectStateData
+    {
+        public float[] position = new float[3];
+        public float[] rotation = new float[4];
+
+        public ObjectStateData() { }
+
+        public ObjectStateData(Vector3 pos, Quaternion rot)
+        {
+            position = new float[] { pos.x, pos.y, pos.z };
+            rotation = new float[] { rot.x, rot.y, rot.z, rot.w };
+        }
+
+        public Vector3 GetPosition() => new Vector3(position[0], position[1], position[2]);
+        public Quaternion GetRotation() => new Quaternion(rotation[0], rotation[1], rotation[2], rotation[3]);
+    }
+
+    [System.Serializable]
     public class GameData
     {
         [Header("Metadata")]
@@ -23,7 +41,11 @@ namespace PuzzleDungeon.Systems.Save
         [Header("World Progress")]
         public List<string> openedChests = new List<string>(); // Liste des IDs de coffres ouverts
         public List<string> solvedPuzzles = new List<string>(); // Liste des IDs de puzzles résolus
+        public List<string> seenTutorials = new List<string>(); // Liste des IDs de tutos déjà vus
         
+        [Header("Dynamic Objects")]
+        public SerializableDictionary<string, ObjectStateData> objectStates = new SerializableDictionary<string, ObjectStateData>();
+
         // Pour plus de flexibilité sans changer la structure à chaque fois
         public SerializableDictionary<string, string> customFlags = new SerializableDictionary<string, string>();
 
@@ -72,5 +94,6 @@ namespace PuzzleDungeon.Systems.Save
         
         public void Set(TKey key, TValue value) => dictionary[key] = value;
         public TValue Get(TKey key) => dictionary.ContainsKey(key) ? dictionary[key] : default;
+        public bool ContainsKey(TKey key) => dictionary.ContainsKey(key);
     }
 }

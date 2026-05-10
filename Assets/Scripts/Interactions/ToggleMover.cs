@@ -19,6 +19,12 @@ public class ToggleMover : MonoBehaviour
     [Tooltip("Si coché, le retour auto ne se déclenche que si le Point B est plus haut que le Point A (ascenseur).")]
     public bool onlyResetOnAscent = true;
 
+    public enum MovementType { Toggle, PauseResume }
+    [Header("Behavior")]
+    [SerializeField] private MovementType _movementType = MovementType.Toggle;
+    [SerializeField, Tooltip("En mode PauseResume, inverse automatiquement la direction une fois arrivé au bout.")]
+    private bool _autoReverseAtEnd = true;
+
     [Header("Visuel (Optionnel)")]
     [Tooltip("Glisse ici le GameObject (le modèle 3D) que tu veux masquer pendant le déplacement.")]
     public GameObject visualObjectToHide;
@@ -26,6 +32,7 @@ public class ToggleMover : MonoBehaviour
     private Vector3 _lastPosition;
     private Vector3 _targetPosA;
     private Vector3 _targetPosB;
+    private bool _movingToB = true;
     private System.Collections.Generic.List<CharacterController> _passengers = new System.Collections.Generic.List<CharacterController>();
 
     private void Start()
@@ -48,15 +55,41 @@ public class ToggleMover : MonoBehaviour
             return;
         }
 
-        // On détermine la cible en fonction de l'état du Toggle
-        Vector3 targetPosition = isToggled ? _targetPosB : _targetPosA;
+        // On détermine la cible en fonction du mode et de l'état
+        Vector3 targetPosition;
+        bool isMoving = false;
+
+        if (_movementType == MovementType.PauseResume)
+        {
+            // En mode PauseResume, isToggled sert de "Play/Pause"
+            if (!isToggled)
+            {
+                targetPosition = transform.position;
+                isMoving = false;
+            }
+            else
+            {
+                targetPosition = _movingToB ? _targetPosB : _targetPosA;
+                isMoving = Vector3.Distance(transform.position, targetPosition) > 0.001f;
+            }
+        }
+        else
+        {
+            // Mode Toggle classique
+            targetPosition = isToggled ? _targetPosB : _targetPosA;
+            isMoving = Vector3.Distance(transform.position, targetPosition) > 0.001f;
+        }
 
         // On calcule la nouvelle position
         Vector3 newPosition = Vector3.MoveTowards(transform.position, targetPosition, speed * Time.deltaTime);
         Vector3 deltaPosition = newPosition - transform.position;
-
-        // Est-ce qu'on est en train de bouger ?
-        bool isMoving = deltaPosition.magnitude > 0.0001f;
+        
+        // Si on vient d'arriver au bout en mode PauseResume, on prépare l'inversion
+        if (_movementType == MovementType.PauseResume && isToggled && !isMoving)
+        {
+            if (_autoReverseAtEnd) _movingToB = !_movingToB;
+            isToggled = false; // On s'arrête en attendant le prochain signal
+        }
 
         // Gestion du masquage visuel
         if (visualObjectToHide != null && visualObjectToHide != this.gameObject)
@@ -124,6 +157,23 @@ public class ToggleMover : MonoBehaviour
     public void SetToggleState(bool state)
     {
         isToggled = state;
+    }
+
+    /// <summary>
+    /// Force la plateforme à se diriger vers un point spécifique, peu importe le mode (Toggle ou PauseResume).
+    /// </summary>
+    /// <param name="toPointB">True pour aller vers B, False pour aller vers A</param>
+    public void ForceMoveToPoint(bool toPointB)
+    {
+        if (_movementType == MovementType.PauseResume)
+        {
+            _movingToB = toPointB;
+            isToggled = true; // On active le mouvement
+        }
+        else
+        {
+            isToggled = toPointB;
+        }
     }
 
     // --- GESTION DES COLLISIONS ---

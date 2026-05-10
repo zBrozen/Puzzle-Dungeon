@@ -20,6 +20,9 @@ namespace PuzzleDungeon.Enemies
 
         [Tooltip("Délai en secondes entre chaque apparition d'ennemi (0 pour tout faire apparaître d'un coup).")]
         public float spawnDelay = 0.5f;
+
+        [Tooltip("Si vrai, chaque ennemi utilisera un point de spawn unique (tant qu'il y en a de disponibles).")]
+        public bool useUniqueSpawnPoints = true;
     }
 
     public class ArenaWaveManager : MonoBehaviour
@@ -114,10 +117,36 @@ namespace PuzzleDungeon.Enemies
                 yield break;
             }
 
+            // Préparer les points de spawn si on veut qu'ils soient uniques
+            List<Transform> spawnList = new List<Transform>(spawnsToUse);
+            if (currentWave.useUniqueSpawnPoints)
+            {
+                // Mélange de Fisher-Yates pour la liste des points de spawn
+                for (int i = 0; i < spawnList.Count; i++)
+                {
+                    Transform temp = spawnList[i];
+                    int randomIndex = Random.Range(i, spawnList.Count);
+                    spawnList[i] = spawnList[randomIndex];
+                    spawnList[randomIndex] = temp;
+                }
+            }
+
             // Faire apparaître les ennemis un par un
             for (int i = 0; i < currentWave.enemyCount; i++)
             {
-                SpawnSingleEnemy(currentWave, spawnsToUse);
+                Transform selectedSpawn;
+                if (currentWave.useUniqueSpawnPoints)
+                {
+                    // On prend le point correspondant à l'index (avec modulo si plus d'ennemis que de points)
+                    selectedSpawn = spawnList[i % spawnList.Count];
+                }
+                else
+                {
+                    // Comportement aléatoire classique (peut se répéter)
+                    selectedSpawn = spawnsToUse[Random.Range(0, spawnsToUse.Length)];
+                }
+
+                SpawnSingleEnemy(currentWave, selectedSpawn);
                 
                 if (currentWave.spawnDelay > 0f)
                 {
@@ -126,11 +155,10 @@ namespace PuzzleDungeon.Enemies
             }
         }
 
-        private void SpawnSingleEnemy(ArenaWave wave, Transform[] spawnPoints)
+        private void SpawnSingleEnemy(ArenaWave wave, Transform spawnPoint)
         {
-            // Choisir un prefab et un point de spawn aléatoirement
+            // Choisir un prefab aléatoirement
             GameObject prefab = wave.enemyPrefabs[Random.Range(0, wave.enemyPrefabs.Length)];
-            Transform spawnPoint = spawnPoints[Random.Range(0, spawnPoints.Length)];
 
             GameObject newEnemy = Instantiate(prefab, spawnPoint.position, spawnPoint.rotation);
             

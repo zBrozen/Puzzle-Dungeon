@@ -23,6 +23,11 @@ namespace PuzzleDungeon.Systems.Save
         public GameData CurrentData => _currentData;
         public int CurrentSlot => _currentSlot;
 
+        [Header("Auto-Save Settings")]
+        [SerializeField] private bool _autoSaveEnabled = true;
+        [SerializeField] private float _autoSaveInterval = 60f; // 1 minute par défaut pour plus de sécurité
+        private float _autoSaveTimer;
+
         private void Awake()
         {
             if (Instance == null)
@@ -46,13 +51,37 @@ namespace PuzzleDungeon.Systems.Save
             SceneManager.sceneLoaded -= OnSceneLoaded;
         }
 
+        private void OnApplicationQuit()
+        {
+            if (_currentSlot != -1)
+            {
+                Debug.Log("[PersistenceManager] Application quitting, saving game...");
+                SaveGame();
+            }
+        }
+
         private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
         {
             // On n'applique les données que si on est dans une scène de jeu (pas le menu principal)
-            if (scene.name != "MainMenu" && _currentSlot != -1)
+            if (scene.name != "MainMenu")
             {
-                Debug.Log($"[PersistenceManager] Scene {scene.name} loaded. Applying data...");
-                ApplyDataToGame();
+                // En éditeur, si on lance directement la scène sans passer par le menu, 
+                // on initialise un slot par défaut pour que la sauvegarde fonctionne.
+                if (_currentSlot == -1)
+                {
+                    #if UNITY_EDITOR
+                    Debug.Log("[PersistenceManager] Editor mode detected. Assigning default slot 0.");
+                    _currentSlot = 0;
+                    if (SaveSystem.HasSave(0)) LoadGame(0);
+                    else NewGame(0);
+                    #endif
+                }
+
+                if (_currentSlot != -1)
+                {
+                    Debug.Log($"[PersistenceManager] Scene {scene.name} loaded. Applying data from slot {_currentSlot}...");
+                    ApplyDataToGame();
+                }
             }
         }
 
@@ -60,6 +89,25 @@ namespace PuzzleDungeon.Systems.Save
         {
             // Note: Auto-loading removed to allow Main Menu slot selection.
             // if (SaveSystem.HasSave(0)) { ... }
+            ResetAutoSaveTimer();
+        }
+
+        private void Update()
+        {
+            if (!_autoSaveEnabled || _currentSlot == -1) return;
+
+            _autoSaveTimer -= Time.deltaTime;
+            if (_autoSaveTimer <= 0)
+            {
+                Debug.Log("[PersistenceManager] Auto-saving...");
+                SaveGame();
+                ResetAutoSaveTimer();
+            }
+        }
+
+        private void ResetAutoSaveTimer()
+        {
+            _autoSaveTimer = _autoSaveInterval;
         }
 
         public void NewGame(int slotIndex, string configID = "random")
@@ -117,14 +165,23 @@ namespace PuzzleDungeon.Systems.Save
         public void SaveGame()
         {
             if (_currentSlot < 0) return;
-            if (_currentData == null) _currentData = new GameData();
+            
+            // On s'assure que currentData existe
+            if (_currentData == null) 
+            {
+                _currentData = new GameData();
+                _currentData.slotIndex = _currentSlot;
+            }
 
+            Debug.Log($"[PersistenceManager] Saving Game to slot {_currentSlot}...");
             CollectDataFromGame();
             SaveSystem.Save(_currentSlot, _currentData);
         }
 
         private void CollectDataFromGame()
         {
+            PlayerInventory inventory = null;
+
             // 1. Joueur
             PlayerHealth health = FindObjectOfType<PlayerHealth>();
             if (health != null)
@@ -138,10 +195,23 @@ namespace PuzzleDungeon.Systems.Save
                 _currentData.playerRotation[1] = health.transform.rotation.y;
                 _currentData.playerRotation[2] = health.transform.rotation.z;
                 _currentData.playerRotation[3] = health.transform.rotation.w;
+                Debug.Log($"[PersistenceManager] Player state collected: Pos={health.transform.position}, Health={health.CurrentHealth}");
+                
+                // S'abonner aux changements d'inventaire si ce n'est pas déjà fait
+                inventory = health.GetComponent<PlayerInventory>();
+                if (inventory != null)
+                {
+                    inventory.OnInventoryChanged -= SaveGame; // Sécurité
+                    inventory.OnInventoryChanged += SaveGame;
+                }
+            }
+            else
+            {
+                Debug.LogWarning("[PersistenceManager] PlayerHealth not found, skipping player data collection.");
             }
 
             // 2. Inventaire
-            PlayerInventory inventory = FindObjectOfType<PlayerInventory>();
+            if (inventory == null) inventory = FindObjectOfType<PlayerInventory>();
             if (inventory != null)
             {
                 _currentData.inventoryItemNames = inventory.GetAllItems().Select(i => i.ItemName).ToList();
@@ -212,21 +282,31 @@ namespace PuzzleDungeon.Systems.Save
             PlayerInventory inventory = FindObjectOfType<PlayerInventory>();
             if (inventory != null)
             {
-                // On vide l'inventaire actuel (nécessite une méthode ou un reset)
-                // Pour l'instant on ajoute juste les items
+                inventory.ClearInventory();
+                Debug.Log($"[PersistenceManager] Loading {_currentData.inventoryItemNames.Count} items into inventory.");
                 foreach (string itemName in _currentData.inventoryItemNames)
                 {
                     ItemData item = _allPossibleItems.Find(i => i.ItemName == itemName);
-                    if (item != null) inventory.AddItem(item);
+                    if (item != null) 
+                    {
+                        inventory.AddItem(item);
+                    }
+                    else
+                    {
+                        Debug.LogWarning($"[PersistenceManager] Item '{itemName}' not found in _allPossibleItems list!");
+                    }
                 }
             }
 
             // 4. Objets persistants (ISaveable)
-            var saveables = FindObjectsOfType<MonoBehaviour>().OfType<ISaveable>();
+            var saveables = Object.FindObjectsByType<MonoBehaviour>(FindObjectsSortMode.None).OfType<ISaveable>();
+            int count = 0;
             foreach (var s in saveables)
             {
                 s.LoadFromSaveData(_currentData);
+                count++;
             }
+            Debug.Log($"[PersistenceManager] Applied data to {count} ISaveable objects.");
         }
     }
 }

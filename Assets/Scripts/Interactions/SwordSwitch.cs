@@ -20,11 +20,14 @@ namespace PuzzleDungeon.Interactions
         [SerializeField, Tooltip("Si vrai, l'interrupteur ne peut être activé qu'une seule fois.")]
         private bool _oneShot = false;
 
+        [SerializeField, Tooltip("Si vrai, frapper l'interrupteur alors qu'il est déjà actif le désactivera.")]
+        private bool _canToggle = false;
+
         [SerializeField, Tooltip("Si vrai, déclenche les événements OnActivated/OnDeactivated au lancement du jeu selon l'état initial.")]
         private bool _syncEventsOnStart = true;
 
         [SerializeField, Tooltip("Temps d'attente minimum entre deux coups pour éviter l'activation multiple.")]
-        private float _hitCooldown = 0.5f;
+        private float _hitCooldown = 0.6f;
 
         [SerializeField, Tooltip("Si supérieur à 0, l'interrupteur se désactivera automatiquement après X secondes.")]
         private float _resetTimer = 0f;
@@ -68,34 +71,46 @@ namespace PuzzleDungeon.Interactions
         public void OnHit()
         {
             // Éviter les activations multiples liées à la hitbox de l'épée sur une même attaque
-            if (Time.time - _lastHitTime < _hitCooldown) return;
+            if (Time.time - _lastHitTime < _hitCooldown)
+            {
+                // Debug.Log($"[SwordSwitch] {gameObject.name} hit ignored (cooldown).");
+                return;
+            }
             _lastHitTime = Time.time;
+            Debug.Log($"[SwordSwitch] {gameObject.name} HIT! State: {(_isOn ? "ON" : "OFF")}");
 
             if (_oneShot && _isOn) return;
 
-            if (_isOn && _resetTimer > 0f)
+            if (_isOn)
             {
-                // Si l'interrupteur est sur timer et déjà allumé, le frapper à nouveau reset le timer au lieu de l'éteindre
-                if (_timerCoroutine != null) StopCoroutine(_timerCoroutine);
-                
-                // On restaure les visuels si c'était en train de clignoter
-                if (_blinkRenderers != null)
+                if (_canToggle)
                 {
-                    foreach (var r in _blinkRenderers)
-                    {
-                        if (r != null) r.enabled = true;
-                    }
+                    SetState(false);
                 }
-                
-                // Relance le timer
-                _timerCoroutine = StartCoroutine(ResetRoutine());
-                
-                // Force l'animation pour le retour visuel
-                UpdateAnimation();
+                else if (_resetTimer > 0f)
+                {
+                    // Si l'interrupteur est sur timer et déjà allumé, le frapper à nouveau reset le timer au lieu de l'éteindre
+                    if (_timerCoroutine != null) StopCoroutine(_timerCoroutine);
+                    
+                    // On restaure les visuels si c'était en train de clignoter
+                    if (_blinkRenderers != null)
+                    {
+                        foreach (var r in _blinkRenderers)
+                        {
+                            if (r != null) r.enabled = true;
+                        }
+                    }
+                    
+                    // Relance le timer
+                    _timerCoroutine = StartCoroutine(ResetRoutine());
+                    
+                    // Force l'animation pour le retour visuel
+                    UpdateAnimation();
+                }
             }
             else
             {
-                SetState(!_isOn);
+                SetState(true);
             }
         }
 

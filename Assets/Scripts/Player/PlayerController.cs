@@ -1,6 +1,7 @@
 using UnityEngine;
 using PuzzleDungeon.Interactions;
 using System;
+using System.Collections.Generic;
 
 namespace PuzzleDungeon.Player
 {
@@ -507,22 +508,31 @@ namespace PuzzleDungeon.Player
             LayerMask hitLayers = _enemyLayer | _interactableLayer;
             Collider[] hits = Physics.OverlapSphere(hitCenter, _attackHitRadius, hitLayers);
             
-            // DEBUG: Décommentez pour voir si la fonction est bien appelée
-            // Debug.Log($"[Combat] Coup porté ! Objets détectés dans la zone : {hits.Length}");
+            // HashSet pour éviter de toucher le même objet plusieurs fois dans la même frame d'attaque
+            // (Utile si un objet a plusieurs colliders enfants)
+            HashSet<Component> hitComponents = new HashSet<Component>();
 
             foreach (var hit in hits)
             {
-                // Vérifier si la cible possède le script EnemyHealth
-                if (hit.TryGetComponent(out PuzzleDungeon.Enemies.EnemyHealth enemyHealth))
+                // On cherche d'abord les ennemis
+                var enemyHealth = hit.GetComponentInParent<PuzzleDungeon.Enemies.EnemyHealth>();
+                if (enemyHealth != null)
                 {
-                    enemyHealth.TakeDamage(_attackDamage);
-                    Debug.Log($"[Combat] Ennemi touché : {hit.name}");
+                    if (hitComponents.Add(enemyHealth))
+                    {
+                        enemyHealth.TakeDamage(_attackDamage);
+                    }
+                    continue; // On passe à l'objet suivant si c'est un ennemi
                 }
-                // Vérifier si la cible est un objet interactif (ex: interrupteur)
-                else if (hit.TryGetComponent(out PuzzleDungeon.Interactions.IHittable hittable))
+
+                // Sinon on cherche les objets interactifs (IHittable)
+                var hittable = hit.GetComponentInParent<IHittable>();
+                if (hittable != null && hittable is Component comp)
                 {
-                    hittable.OnHit();
-                    Debug.Log($"[Combat] Objet touché : {hit.name}");
+                    if (hitComponents.Add(comp))
+                    {
+                        hittable.OnHit();
+                    }
                 }
             }
         }

@@ -1,6 +1,8 @@
 using System;
 using System.Collections;
+using System.Linq;
 using UnityEngine;
+using PuzzleDungeon.Systems.Save;
 
 namespace PuzzleDungeon.Player
 {
@@ -67,8 +69,23 @@ namespace PuzzleDungeon.Player
         {
             _currentHealth = _maxHealth;
             
-            // Le point de respawn par défaut est la position de départ
-            SetRespawnPoint(transform.position, transform.rotation);
+            // Chercher le point de spawn par défaut dans la scène
+            PlayerSpawnPoint[] spawnPoints = FindObjectsOfType<PlayerSpawnPoint>();
+            PlayerSpawnPoint startPoint = null;
+            if (spawnPoints.Length > 0)
+            {
+                startPoint = spawnPoints.FirstOrDefault(s => s.IsDefault) ?? spawnPoints[0];
+            }
+
+            if (startPoint != null)
+            {
+                SetRespawnPoint(startPoint.transform.position, startPoint.transform.rotation);
+            }
+            else
+            {
+                // Fallback sur la position actuelle si aucun point de spawn n'est défini
+                SetRespawnPoint(transform.position, transform.rotation);
+            }
 
             // Cache les renderers du modèle pour le clignotement
             CacheRenderers();

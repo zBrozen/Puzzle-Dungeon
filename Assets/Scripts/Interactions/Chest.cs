@@ -17,8 +17,38 @@ namespace PuzzleDungeon.Interactions
         public float StepDuration = 2.0f;
     }
 
-    public class Chest : MonoBehaviour
+    [RequireComponent(typeof(PuzzleDungeon.Systems.UniqueIdentifier))]
+    public class Chest : MonoBehaviour, PuzzleDungeon.Systems.Save.ISaveable
     {
+        private PuzzleDungeon.Systems.UniqueIdentifier _uid;
+        public string UniqueID => _uid != null ? _uid.Id : string.Empty;
+
+        public void PopulateSaveData(PuzzleDungeon.Systems.Save.GameData data)
+        {
+            if (string.IsNullOrEmpty(UniqueID)) return;
+            if (_isOpened)
+            {
+                if (!data.openedChests.Contains(UniqueID))
+                    data.openedChests.Add(UniqueID);
+            }
+        }
+
+        public void LoadFromSaveData(PuzzleDungeon.Systems.Save.GameData data)
+        {
+            if (string.IsNullOrEmpty(UniqueID)) return;
+            if (data.openedChests.Contains(UniqueID))
+            {
+                _isOpened = true;
+                HideChestVisuals();
+                // On s'assure que l'animator est dans le bon état aussi si possible
+                if (_chestAnimator != null) _chestAnimator.Play(_openParameter, 0, 1f); 
+            }
+        }
+
+        private void Awake()
+        {
+            _uid = GetComponent<PuzzleDungeon.Systems.UniqueIdentifier>();
+        }
         [Header("Item Settings")]
         [SerializeField] private ItemData _itemInside;
         [SerializeField] private Transform _itemSpawnPoint;

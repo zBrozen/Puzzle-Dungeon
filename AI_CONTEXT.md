@@ -47,6 +47,14 @@ Le gameplay repose sur la résolution de puzzles spatiaux et logiques, avec ou s
 - **Application :** Une grande salle sera construite avec une abondance d'énigmes différentes permettant toutes d'accomplir la même tâche. Le JSON se chargera de n'en rendre qu'une seule applicable/accessible par le joueur.
 - *Priorité actuelle :* La mise en place de ce système est secondaire ; la priorité absolue actuelle est la **création et validation des mécaniques de base**.
 
+## 💾 Système de Sauvegarde et Persistance
+- **Auto-Save :** Le jeu effectue une sauvegarde automatique périodique (configurée dans `PersistenceManager`).
+- **États Persistants :** 
+  - La santé, la position du joueur et l'inventaire sont sauvegardés.
+  - Les objets interactifs (comme les blocs à pousser) peuvent sauvegarder leur position et rotation via le composant `PersistentTransform`.
+  - Le système utilise des `UniqueIdentifier` pour mapper les données sauvegardées aux objets de la scène.
+  - Les coffres ouverts, les puzzles résolus et les tutoriels vus sont également suivis.
+
 ## 🤖 Mode d'Interaction et Personas
 L'utilisateur peut demander à l'IA d'adopter des rôles spécifiques selon les besoins du moment. Lors de vos réponses, adaptez votre expertise au rôle demandé :
 
