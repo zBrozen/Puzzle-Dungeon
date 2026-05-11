@@ -188,12 +188,18 @@ namespace PuzzleDungeon.Interactions
                 Transform spawnPoint = _itemSpawnPoint != null ? _itemSpawnPoint : transform;
                 Vector3 spawnPos = spawnPoint.position;
                 
-                _spawnedItem = Instantiate(_itemInside.Prefab, spawnPos, Quaternion.identity);
+                // Utilisation de la rotation du point de spawn pour permettre un ajustement dans l'éditeur
+                _spawnedItem = Instantiate(_itemInside.Prefab, spawnPos, spawnPoint.rotation);
                 
-                // On utilise le scale du point de spawn pour redimensionner l'objet
-                _spawnedItem.transform.localScale = spawnPoint.localScale;
+                // Sécurité physique : on empêche l'objet de tomber ou de réagir aux collisions
+                if (_spawnedItem.TryGetComponent<Rigidbody>(out Rigidbody rb))
+                {
+                    rb.isKinematic = true;
+                }
                 
-                // Petit effet de "pop" (agrandissement progressif)
+                // Initialisation forcée à zéro pour éviter un flash visuel avant l'anim
+                _spawnedItem.transform.localScale = Vector3.zero;
+                
                 StartCoroutine(AnimateItemEntry(_spawnedItem, spawnPoint.localScale));
                 StartCoroutine(SpinItem(_spawnedItem));
             }
@@ -348,12 +354,16 @@ namespace PuzzleDungeon.Interactions
 
         private IEnumerator AnimateItemEntry(GameObject item, Vector3 targetScale)
         {
+            if (item == null) yield break;
+            
             item.transform.localScale = Vector3.zero;
             float elapsed = 0f;
             float duration = 0.5f;
 
             while (elapsed < duration)
             {
+                if (item == null) yield break;
+                
                 elapsed += Time.deltaTime;
                 float t = elapsed / duration;
                 // Effet de rebond élastique
@@ -361,13 +371,18 @@ namespace PuzzleDungeon.Interactions
                 item.transform.localScale = targetScale * s;
                 yield return null;
             }
-            item.transform.localScale = targetScale;
+            
+            if (item != null)
+                item.transform.localScale = targetScale;
         }
 
         private IEnumerator SpinItem(GameObject item)
         {
             while (item != null)
             {
+                // On vérifie le transform car l'objet pourrait être détruit pendant la frame
+                if (item == null) yield break;
+                
                 item.transform.Rotate(Vector3.up, _itemSpinSpeed * Time.deltaTime);
                 yield return null;
             }

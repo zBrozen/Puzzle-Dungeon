@@ -290,7 +290,7 @@ namespace PuzzleDungeon.Interactions
 
         private void HandleImpact(Collider other)
         {
-            if (_isDestroyed) return;
+            if (_isDestroyed || !_isFlying) return;
             
             // Sécurité supplémentaire : si c'est l'owner, on ignore
             if (_owner != null && other.transform.IsChildOf(_owner)) return;

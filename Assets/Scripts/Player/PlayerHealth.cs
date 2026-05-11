@@ -63,11 +63,16 @@ namespace PuzzleDungeon.Player
         private void Awake()
         {
             _playerController = GetComponent<PlayerController>();
+            
+            // Initialisation par défaut (peut être écrasée par le PersistenceManager juste après l'Awake)
+            _currentHealth = _maxHealth;
         }
 
         private void Start()
         {
-            _currentHealth = _maxHealth;
+            // On signale l'état actuel pour que l'UI se synchronise dès le début,
+            // que la vie vienne du défaut (Awake) ou de la sauvegarde (PersistenceManager).
+            OnHealthChanged?.Invoke(_currentHealth, _maxHealth);
             
             // Chercher le point de spawn par défaut dans la scène
             PlayerSpawnPoint[] spawnPoints = FindObjectsOfType<PlayerSpawnPoint>();
@@ -135,8 +140,10 @@ namespace PuzzleDungeon.Player
         {
             // Le vide outrepasse l'invulnérabilité pour forcer le respawn et les visuels,
             // mais on ne prend des dégâts que si on n'était pas déjà invulnérable.
-            if (type != DamageType.Void && (_isInvulnerable || _currentHealth <= 0)) return;
-            if (type == DamageType.Void && _currentHealth <= 0) return;
+            // On n'ignore les dégâts que si on est déjà invulnérable.
+            // Si on est à 0 HP mais pas encore mort (cas rare de désync), on laisse passer pour déclencher Die().
+            if (type != DamageType.Void && (_isInvulnerable || (_currentHealth <= 0 && _isRespawning))) return;
+            if (type == DamageType.Void && _currentHealth <= 0 && _isRespawning) return;
 
             bool wasInvulnerable = _isInvulnerable;
             if (!wasInvulnerable)
