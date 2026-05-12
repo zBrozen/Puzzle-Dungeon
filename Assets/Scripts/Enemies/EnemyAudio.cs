@@ -43,8 +43,15 @@ namespace PuzzleDungeon.Enemies
         {
             if (clip == null || _audioSource == null) return;
 
+            // Appliquer le volume global
+            float globalMultiplier = 1f;
+            if (Systems.AudioManager.Instance != null)
+            {
+                globalMultiplier = Systems.AudioManager.Instance.SFXVolume * Systems.AudioManager.Instance.MasterVolume;
+            }
+
             _audioSource.pitch = 1f + Random.Range(-_pitchVariation, _pitchVariation);
-            _audioSource.PlayOneShot(clip, _volume);
+            _audioSource.PlayOneShot(clip, _volume * globalMultiplier);
         }
     }
 }

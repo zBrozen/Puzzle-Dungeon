@@ -315,6 +315,12 @@ namespace PuzzleDungeon.Interactions
             
             Debug.Log("[Scarab] Impact !");
             
+            Destroy(gameObject);
+        }
+
+        private void OnDestroy()
+        {
+            // Nettoyage des capteurs visuels
             if (_sensorBeams != null)
             {
                 foreach (var sensor in _sensorBeams)
@@ -324,8 +330,8 @@ namespace PuzzleDungeon.Interactions
                 }
             }
             
+            // Notification au lanceur pour le nettoyage de la caméra/UI
             OnScarabDestroyed?.Invoke();
-            Destroy(gameObject);
         }
     }
 }

@@ -1,6 +1,7 @@
 using UnityEngine;
 using PuzzleDungeon.Player;
 using UnityEngine.Events;
+using PuzzleDungeon.Systems;
 
 namespace PuzzleDungeon.Interactions
 {
@@ -35,10 +36,13 @@ namespace PuzzleDungeon.Interactions
 
         private void OnTriggerEnter(Collider other)
         {
+            // Log pour vérifier que le trigger s'active bien en build
+            Debug.Log($"[VoidTrigger] {gameObject.name} touchée par {other.name} (Layer: {other.gameObject.layer})");
+
             if (other.TryGetComponent(out PlayerController player))
             {
                 // Trigger the reset event
-                onVoidEnter?.Invoke();
+                if (onVoidEnter != null) onVoidEnter.Invoke();
 
                 // 1. Téléporter d'abord au bord (spawn local du VoidTrigger)
                 RespawnPlayer(player);
@@ -70,14 +74,28 @@ namespace PuzzleDungeon.Interactions
             // Jouer le son
             if (_respawnSound != null)
             {
-                if (_audioSource != null)
+                Debug.Log($"[VoidTrigger] Tentative de lecture du son : {_respawnSound.name}");
+
+                if (_audioSource != null && _audioSource.gameObject.activeInHierarchy)
                 {
                     _audioSource.PlayOneShot(_respawnSound);
                 }
+                else if (AudioManager.Instance != null)
+                {
+                    // On passe par le Singleton global via la méthode persistante
+                    AudioManager.Instance.PlayGlobalSFX(_respawnSound);
+                }
                 else
                 {
-                    AudioSource.PlayClipAtPoint(_respawnSound, _spawnPoint.position);
+                    // Fallback ultime : PlayClipAtPoint (crée un objet temporaire)
+                    // On le joue à la position de la caméra pour être sûr qu'on l'entende (2D-ish)
+                    Vector3 soundPos = Camera.main != null ? Camera.main.transform.position : transform.position;
+                    AudioSource.PlayClipAtPoint(_respawnSound, soundPos);
                 }
+            }
+            else
+            {
+                Debug.LogWarning($"[VoidTrigger] Aucun son de respawn assigné sur {gameObject.name}");
             }
 
             // Jouer les particules

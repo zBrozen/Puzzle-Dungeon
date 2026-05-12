@@ -1,12 +1,23 @@
 using UnityEngine;
 using UnityEngine.Events;
 using System.Collections;
+using PuzzleDungeon.Systems;
+using PuzzleDungeon.Systems.Save;
 
 namespace PuzzleDungeon.Interactions
 {
     [RequireComponent(typeof(Collider))]
-    public class SwordSwitch : MonoBehaviour, IHittable
+    [RequireComponent(typeof(UniqueIdentifier))]
+    public class SwordSwitch : MonoBehaviour, IHittable, ISaveable
     {
+        private UniqueIdentifier _uid;
+        public string UniqueID => _uid != null ? _uid.Id : string.Empty;
+
+        private void Awake()
+        {
+            _uid = GetComponent<UniqueIdentifier>();
+        }
+
         [Header("Animations")]
         [SerializeField] private Animator _animator;
         [SerializeField] private string _idleAnim = "SwordToggleIdle";
@@ -202,5 +213,36 @@ namespace PuzzleDungeon.Interactions
                 SetState(false);
             }
         }
+
+        #region ISaveable Implementation
+
+        public void PopulateSaveData(GameData data)
+        {
+            if (string.IsNullOrEmpty(UniqueID)) return;
+
+            // On ne sauvegarde que si l'interrupteur est un toggle permanent (pas de timer)
+            // comme demandé par l'utilisateur.
+            if (_canToggle && _resetTimer <= 0)
+            {
+                data.customFlags.Set("SwordSwitch_" + UniqueID, _isOn.ToString());
+            }
+        }
+
+        public void LoadFromSaveData(GameData data)
+        {
+            if (string.IsNullOrEmpty(UniqueID)) return;
+
+            string key = "SwordSwitch_" + UniqueID;
+            if (data.customFlags.ContainsKey(key))
+            {
+                if (bool.TryParse(data.customFlags.Get(key), out bool savedState))
+                {
+                    // On applique l'état. SetState s'occupera de l'animation et des événements.
+                    SetState(savedState);
+                }
+            }
+        }
+
+        #endregion
     }
 }

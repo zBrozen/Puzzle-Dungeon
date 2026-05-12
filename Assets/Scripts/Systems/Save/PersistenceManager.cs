@@ -217,6 +217,8 @@ namespace PuzzleDungeon.Systems.Save
                 _currentData.inventoryItemNames = inventory.GetAllItems().Select(i => i.ItemName).ToList();
             }
 
+
+
             // 3. Objets persistants (ISaveable)
             var saveables = FindObjectsOfType<MonoBehaviour>().OfType<ISaveable>();
             foreach (var s in saveables)
@@ -267,13 +269,14 @@ namespace PuzzleDungeon.Systems.Save
                         }
 
                         _currentData.isNewGame = false;
-                        SaveGame(); // Marquer que ce n'est plus une nouvelle partie
+                        _wasNewGameProcessing = true; // On marquera la sauvegarde à la fin
                     }
                     else
                     {
                         pc.Teleport(pos, rot);
                     }
                 }
+
 
                 health.RestoreHealth(_currentData.currentHealth);
             }
@@ -296,6 +299,8 @@ namespace PuzzleDungeon.Systems.Save
                         Debug.LogWarning($"[PersistenceManager] Item '{itemName}' not found in _allPossibleItems list!");
                     }
                 }
+
+
             }
 
             // 4. Objets persistants (ISaveable)
@@ -307,6 +312,17 @@ namespace PuzzleDungeon.Systems.Save
                 count++;
             }
             Debug.Log($"[PersistenceManager] Applied data to {count} ISaveable objects.");
+
+            // Si on vient de traiter une "nouvelle partie" (respawn de fin de démo), 
+            // on sauvegarde maintenant que TOUT est chargé (y compris l'inventaire)
+            if (_currentData != null && !_currentData.isNewGame && _wasNewGameProcessing)
+            {
+                _wasNewGameProcessing = false;
+                SaveGame();
+            }
         }
+
+        private bool _wasNewGameProcessing = false;
+
     }
 }

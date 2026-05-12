@@ -6,8 +6,20 @@ namespace PuzzleDungeon.Interactions
     /// Script pour gérer l'ouverture et la fermeture des portes du donjon.
     /// Peut être piloté par un PressurePlate via les UnityEvents.
     /// </summary>
-    public class PuzzleDoor : MonoBehaviour
+    public class PuzzleDoor : MonoBehaviour, IInteractable
     {
+        [Header("Locking Settings")]
+        [SerializeField] private bool _isLocked = false;
+        [SerializeField] private ItemData _requiredKey;
+        [SerializeField] private GameObject _lockObject;
+        [SerializeField] private string _lockedPrompt = "Déverrouiller avec la clé";
+        [SerializeField] private string _noKeyPrompt = "Porte verrouillée";
+
+        [Header("Cinematic Settings")]
+        [SerializeField] private bool _triggerDemoEndOnUnlock = false;
+        [SerializeField] private Transform _cinematicCameraPoint;
+        [SerializeField] private Transform _lookAtTarget;
+
         [Header("Animation Method")]
         [Tooltip("Si assigné, le script pilotera l'Animator.")]
         [SerializeField] private Animator _animator;
@@ -113,5 +125,85 @@ namespace PuzzleDungeon.Interactions
             if (_isOpen) Close();
             else Open();
         }
+
+        // IInteractable implementation
+        public void Interact(PuzzleDungeon.Player.PlayerController player)
+        {
+            if (_isLocked)
+            {
+                PuzzleDungeon.Player.PlayerInventory inventory = player.GetComponent<PuzzleDungeon.Player.PlayerInventory>();
+                
+                // Check for key
+                bool hasKey = false;
+                if (inventory != null)
+                {
+                    hasKey = inventory.HasItem(_requiredKey) || inventory.HasItem("Key") || inventory.HasItem("key");
+                }
+
+
+
+                if (hasKey)
+                {
+                    Debug.Log("[PuzzleDoor] Key found! Unlocking...");
+                    Unlock();
+                    
+                    if (_triggerDemoEndOnUnlock)
+                    {
+                        DemoEndManager.Instance.StartEndSequence(this);
+                    }
+                    else
+                    {
+                        Open();
+                    }
+                }
+                else
+                {
+                    Debug.LogWarning($"[PuzzleDoor] Key NOT found. Required: {(_requiredKey != null ? _requiredKey.ItemName : "Key")}");
+                }
+            }
+            else
+            {
+                Toggle();
+            }
+        }
+
+
+
+        public string GetInteractionPrompt(PuzzleDungeon.Player.PlayerController player)
+        {
+            if (_isLocked)
+            {
+                PuzzleDungeon.Player.PlayerInventory inventory = player.GetComponent<PuzzleDungeon.Player.PlayerInventory>();
+                bool hasKey = inventory != null && (inventory.HasItem(_requiredKey) || inventory.HasItem("Key") || inventory.HasItem("key"));
+
+                if (hasKey)
+                {
+                    return _lockedPrompt;
+                }
+                return _noKeyPrompt;
+            }
+            
+            return _isOpen ? "Fermer" : "Ouvrir";
+        }
+
+
+
+        public bool CanInteract(PuzzleDungeon.Player.PlayerController player)
+        {
+            // Si verrouillée, on ne peut interagir que si on a la clé (ou pour voir le message "verrouillé")
+            // Dans notre cas, on permet l'interaction pour afficher le prompt "Porte verrouillée"
+            return true;
+        }
+
+        public void Unlock()
+        {
+            _isLocked = false;
+            if (_lockObject != null) _lockObject.SetActive(false);
+            Debug.Log($"[PuzzleDoor] {name} Unlocked");
+        }
+
+        public Transform GetCinematicPoint() => _cinematicCameraPoint;
+        public Transform GetLookAtTarget() => _lookAtTarget != null ? _lookAtTarget : transform;
+
     }
 }

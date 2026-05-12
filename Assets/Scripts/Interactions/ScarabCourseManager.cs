@@ -19,6 +19,7 @@ namespace PuzzleDungeon.Interactions
         [Header("Reward Settings")]
         [SerializeField] private ItemData _rewardItem;
         [SerializeField] private Transform _rewardCameraPoint;
+        [SerializeField] private Transform _rewardSpawnPoint;
         [SerializeField] private Vector3 _itemSpawnOffset = new Vector3(0, 2f, 0);
         [SerializeField] private float _itemSpinSpeed = 100f;
 
@@ -111,7 +112,7 @@ namespace PuzzleDungeon.Interactions
 
                 if (_currentRingIndex >= _rings.Count)
                 {
-                    CompleteCourse();
+                    CompleteCourse(scarab);
                 }
                 else
                 {
@@ -138,13 +139,19 @@ namespace PuzzleDungeon.Interactions
             }
         }
 
-        private void CompleteCourse()
+        private void CompleteCourse(Scarab scarab = null)
         {
             _isCourseActive = false;
             _isCompleted = true;
             Debug.Log("[ScarabCourse] Course completed!");
             OnCourseCompleted?.Invoke();
             
+            // On fait exploser le scarabée pour que la caméra revienne naturellement sur le joueur
+            if (scarab != null)
+            {
+                scarab.Explode();
+            }
+
             // On peut cacher tous les anneaux à la fin
             foreach (var ring in _rings) ring.SetState(false, false, null, null);
 
@@ -160,6 +167,9 @@ namespace PuzzleDungeon.Interactions
 
         private IEnumerator RewardSequence(PlayerController player)
         {
+            // On laisse un peu de temps à la caméra pour revenir vers le joueur (transition de ScarabLauncher)
+            yield return new WaitForSeconds(0.6f);
+
             player.IsLocked = true;
             player.SetState(PlayerController.PlayerState.Treasure);
 
@@ -190,11 +200,13 @@ namespace PuzzleDungeon.Interactions
             GameObject spawnedItem = null;
             if (_rewardItem != null && _rewardItem.Prefab != null)
             {
-                Vector3 spawnPos = player.transform.position + _itemSpawnOffset;
+                Vector3 spawnPos = _rewardSpawnPoint != null ? _rewardSpawnPoint.position : (player.transform.position + _itemSpawnOffset);
+                Vector3 targetScale = _rewardSpawnPoint != null ? _rewardSpawnPoint.localScale : Vector3.one;
+                
                 spawnedItem = Instantiate(_rewardItem.Prefab, spawnPos, Quaternion.identity);
                 
                 // Petit effet de pop
-                StartCoroutine(AnimateItemEntry(spawnedItem, Vector3.one));
+                StartCoroutine(AnimateItemEntry(spawnedItem, targetScale));
                 StartCoroutine(SpinItem(spawnedItem));
             }
 

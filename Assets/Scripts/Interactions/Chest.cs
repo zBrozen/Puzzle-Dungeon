@@ -18,8 +18,24 @@ namespace PuzzleDungeon.Interactions
     }
 
     [RequireComponent(typeof(PuzzleDungeon.Systems.UniqueIdentifier))]
-    public class Chest : MonoBehaviour, PuzzleDungeon.Systems.Save.ISaveable
+    public class Chest : MonoBehaviour, PuzzleDungeon.Systems.Save.ISaveable, IInteractable
     {
+        // IInteractable implementation
+        public void Interact(PlayerController player)
+        {
+            Open(player);
+        }
+
+        public string GetInteractionPrompt(PlayerController player)
+        {
+            return _isOpened ? "" : "Ouvrir";
+        }
+
+        public bool CanInteract(PlayerController player)
+        {
+            return !_isOpened;
+        }
+
         private PuzzleDungeon.Systems.UniqueIdentifier _uid;
         public string UniqueID => _uid != null ? _uid.Id : string.Empty;
 

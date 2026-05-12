@@ -256,13 +256,14 @@ namespace PuzzleDungeon.Player
         {
             // Détection pour l'état visuel (animations) : on veut rester "grounded" sur les petites marches
             // pour éviter de déclencher l'anim de chute à chaque petit dénivelé.
-            // On inclut _climbableLayer pour éviter de passer en état "Fall" quand on est sur un rebord.
+            // On inclut _enemyLayer pour éviter de passer en état "Fall" quand on est poussé par un ennemi.
+            LayerMask groundedMask = _groundLayer | _climbableLayer | _interactableLayer | _enemyLayer;
+            
             float visualCheckDist = (_velocity.y > 0.1f) ? 0.2f : (_stepHeight + 0.15f);
-            bool raycastVisualGrounded = Physics.Raycast(transform.position + Vector3.up * 0.1f, Vector3.down, visualCheckDist, _groundLayer | _climbableLayer | _interactableLayer);
+            bool raycastVisualGrounded = Physics.Raycast(transform.position + Vector3.up * 0.1f, Vector3.down, visualCheckDist, groundedMask);
             
             // Détection pour la physique : on ne reset la vélocité que si on est réellement sur un sol horizontal.
-            // On ignore le isGrounded du controller si on tombe vite (évite de considérer les murs comme du sol).
-            bool raycastPhysicalGrounded = Physics.Raycast(transform.position + Vector3.up * 0.1f, Vector3.down, 0.25f, _groundLayer | _climbableLayer | _interactableLayer);
+            bool raycastPhysicalGrounded = Physics.Raycast(transform.position + Vector3.up * 0.1f, Vector3.down, 0.25f, groundedMask);
             bool isPhysicallyGrounded = raycastPhysicalGrounded || (_controller.isGrounded && _velocity.y > -1.0f);
 
             _isGrounded = isPhysicallyGrounded || raycastVisualGrounded;
@@ -350,24 +351,41 @@ namespace PuzzleDungeon.Player
 
         private void HandleEnemySliding()
         {
-            // On ne glisse que si on est au sol (sur l'ennemi)
-            if (!_isGrounded) return;
+            // On veut éjecter le joueur s'il est trop proche ou sur un ennemi
+            // pour éviter qu'il ne grimpe dessus (ce qui peut déclencher des comportements erratiques).
+            
+            // 1. Détection par le haut (si on est sur l'ennemi)
+            bool isOverEnemy = Physics.Raycast(transform.position + Vector3.up * 0.5f, Vector3.down, out RaycastHit hit, 0.8f, _enemyLayer);
+            
+            // 2. Détection de contact horizontal (si on bute contre l'ennemi)
+            // On utilise une sphère légèrement plus grande que le controller pour anticiper le contact
+            bool isTouchingEnemy = Physics.CheckSphere(transform.position + Vector3.up * 0.5f, _controller.radius + 0.1f, _enemyLayer);
 
-            // Raycast vers le bas pour détecter si on marche sur un ennemi
-            // On commence un peu plus haut pour être sûr de traverser le pied du joueur
-            if (Physics.Raycast(transform.position + Vector3.up * 0.5f, Vector3.down, out RaycastHit hit, 0.8f, _enemyLayer))
+            if (isOverEnemy || isTouchingEnemy)
             {
-                // Direction d'éjection : du centre de l'ennemi vers le joueur
-                Vector3 pushDir = transform.position - hit.transform.position;
+                Vector3 pushDir = Vector3.zero;
+                
+                if (isOverEnemy)
+                {
+                    pushDir = transform.position - hit.transform.position;
+                }
+                else
+                {
+                    // On cherche le centre de l'ennemi le plus proche pour définir la direction d'éjection
+                    Collider[] nearbyEnemies = Physics.OverlapSphere(transform.position + Vector3.up * 0.5f, _controller.radius + 0.5f, _enemyLayer);
+                    if (nearbyEnemies.Length > 0)
+                        pushDir = transform.position - nearbyEnemies[0].transform.position;
+                    else
+                        pushDir = transform.forward;
+                }
+
                 pushDir.y = 0;
-                
-                // Si on est pile au milieu, on choisit une direction par défaut
                 if (pushDir.magnitude < 0.01f) pushDir = transform.forward;
-                
                 pushDir.Normalize();
 
-                // On applique un mouvement forcé vers l'extérieur
-                _controller.Move(pushDir * 5f * Time.deltaTime);
+                // On applique une force d'éjection pour dégager le joueur proprement
+                float force = isTouchingEnemy ? 6f : 4f;
+                _controller.Move(pushDir * force * Time.deltaTime);
             }
         }
 
@@ -404,39 +422,46 @@ namespace PuzzleDungeon.Player
 
         private void HandleInteraction()
         {
-            if (Input.GetKeyDown(_interactKey))
-            {
-                Debug.Log($"[Interaction] Key {_interactKey} pressed. Range: {_interactRange}, Layer: {_interactableLayer.value}");
-                
-                // On utilise un SphereCast plutôt qu'un Raycast pour être plus tolérant sur la visée
-                Vector3 origin = transform.position + Vector3.up * 1f;
-                float radius = 0.5f;
+            // Detection of interactable in front
+            Vector3 origin = transform.position + Vector3.up * 1f;
+            float radius = 0.5f;
+            IInteractable currentInteractable = null;
 
-                if (Physics.SphereCast(origin, radius, transform.forward, out RaycastHit hit, _interactRange, _interactableLayer))
+            if (Physics.SphereCast(origin, radius, transform.forward, out RaycastHit hit, _interactRange, _interactableLayer))
+            {
+                currentInteractable = hit.collider.GetComponentInParent<IInteractable>();
+                if (currentInteractable == null)
                 {
-                    Debug.Log($"[Interaction] Hit: {hit.collider.name} on layer {hit.collider.gameObject.layer}");
-                    
-                    if (hit.collider.TryGetComponent(out Chest chest))
+                    Debug.Log($"[Interaction] Hit {hit.collider.name} but no IInteractable found.");
+                }
+            }
+            else
+            {
+                // Optional: debug visualize the spherecast or hit nothing
+            }
+
+
+            // Show prompt if we have an interactable and we can interact
+            if (currentInteractable != null && currentInteractable.CanInteract(this))
+            {
+                string prompt = currentInteractable.GetInteractionPrompt(this);
+                if (!string.IsNullOrEmpty(prompt))
+                {
+                    // For now, use the TutorialUIManager to show the interaction prompt
+                    // We use a very short duration because this is called in Update
+                    if (PuzzleDungeon.UI.TutorialUIManager.Instance != null)
                     {
-                        Debug.Log("[Interaction] Chest component found, opening...");
-                        chest.Open(this);
-                    }
-                    else if (hit.collider.GetComponentInParent<Chest>())
-                    {
-                        Debug.Log("[Interaction] Chest component found in parent, opening...");
-                        hit.collider.GetComponentInParent<Chest>().Open(this);
-                    }
-                    else
-                    {
-                        Debug.Log("[Interaction] No Chest component found on hit object.");
+                        PuzzleDungeon.UI.TutorialUIManager.Instance.ShowTutorial($"[{_interactKey}] {prompt}", null, 0.1f);
                     }
                 }
-                else
+
+                if (Input.GetKeyDown(_interactKey))
                 {
-                    Debug.Log("[Interaction] Raycast/SphereCast hit nothing. Check if the Chest is on the correct Layer and has a Collider.");
+                    currentInteractable.Interact(this);
                 }
             }
         }
+
 
         private System.Collections.IEnumerator DrawAndAttackRoutine()
         {
@@ -595,8 +620,9 @@ namespace PuzzleDungeon.Player
             if (!_isGrounded) return;
             if (_currentState == PlayerState.Climb || _currentState == PlayerState.Roll || _currentState == PlayerState.HardLand || _currentState == PlayerState.Push || _currentState == PlayerState.BigPush) return;
             
-            // Si on a déjà atteint la fin du combo et qu'on est encore en train d'attaquer, on ignore l'input pour l'instant
-            if (_currentState == PlayerState.Attack && _currentComboStep >= _maxComboStep) return;
+            // On ne peut pas attaquer si on est déjà en train d'attaquer.
+            // Cela empêche le spam de clics de redémarrer la coroutine d'attaque hyper vite.
+            if (_currentState == PlayerState.Attack) return;
 
             _sheatheTimer = _autoSheatheDelay; // reset timer
 

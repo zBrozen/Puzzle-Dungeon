@@ -76,8 +76,7 @@ namespace PuzzleDungeon.Player
             _activeMinAngle = _verticalMinAngle;
             _activeMaxAngle = _verticalMaxAngle;
 
-            Cursor.lockState = CursorLockMode.Locked;
-            Cursor.visible = false;
+            // Le curseur est géré par PauseManager
 
             _smoothPosition = _target.position + _offset;
             _currentX = transform.eulerAngles.y;
@@ -107,19 +106,7 @@ namespace PuzzleDungeon.Player
             _distance -= Input.GetAxis("Mouse ScrollWheel") * 5f;
             _distance = Mathf.Clamp(_distance, _minDistance, _maxDistance);
             
-            if (Input.GetKeyDown(KeyCode.Escape))
-            {
-                if (Cursor.lockState == CursorLockMode.Locked)
-                {
-                    Cursor.lockState = CursorLockMode.None;
-                    Cursor.visible = true;
-                }
-                else
-                {
-                    Cursor.lockState = CursorLockMode.Locked;
-                    Cursor.visible = false;
-                }
-            }
+            // La touche Escape est gérée par PauseManager
         }
 
         private void UpdateFocus()

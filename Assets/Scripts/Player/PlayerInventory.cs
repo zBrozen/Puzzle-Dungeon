@@ -59,6 +59,8 @@ namespace PuzzleDungeon.Player
             return false;
         }
 
+
+
         public List<ItemData> GetAllItems()
         {
             return new List<ItemData>(_items);
@@ -72,5 +74,7 @@ namespace PuzzleDungeon.Player
             _items.Clear();
             OnInventoryChanged?.Invoke();
         }
+
+
     }
 }

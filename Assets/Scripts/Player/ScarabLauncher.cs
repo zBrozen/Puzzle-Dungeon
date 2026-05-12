@@ -1,4 +1,5 @@
 using UnityEngine;
+using System.Collections;
 using PuzzleDungeon.Interactions;
 
 namespace PuzzleDungeon.Player
@@ -191,15 +192,29 @@ namespace PuzzleDungeon.Player
         {
             if (_activeScarab != null)
             {
-                // Détruire le scarabée déclenchera HandleScarabDestroyed via l'action OnScarabDestroyed
+                // On se désabonne de l'action car on va appeler HandleScarabDestroyed manuellement
+                // pour s'assurer que le nettoyage (caméra, UI, lock) est fait immédiatement.
+                _activeScarab.OnScarabDestroyed -= HandleScarabDestroyed;
                 Destroy(_activeScarab.gameObject);
+                HandleScarabDestroyed();
             }
         }
 
         private void HandleScarabDestroyed()
         {
             _activeScarab = null;
-            _playerController.IsLocked = false;
+            
+            // On retarde le déverrouillage d'un frame pour éviter que l'input d'annulation (Espace)
+            // ne déclenche une roulade sur le PlayerController dans la même frame.
+            if (gameObject.activeInHierarchy)
+            {
+                StartCoroutine(UnlockPlayerDelayed());
+            }
+            else
+            {
+                if (_playerController != null) _playerController.IsLocked = false;
+            }
+
             _currentState = LauncherState.Idle;
 
             if (_cameraController != null) _cameraController.SetIgnoreTarget(null);
@@ -209,6 +224,12 @@ namespace PuzzleDungeon.Player
             {
                 _cameraController.ResetTarget();
             }
+        }
+
+        private IEnumerator UnlockPlayerDelayed()
+        {
+            yield return null;
+            if (_playerController != null) _playerController.IsLocked = false;
         }
     }
 }

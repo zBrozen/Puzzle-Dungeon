@@ -25,7 +25,19 @@ namespace PuzzleDungeon.Enemies
         [Header("Movement Settings")]
         [SerializeField] private float _patrolSpeed = 2f;
         [SerializeField] private float _chaseSpeed = 4.5f;
-        [SerializeField] private float _hurtStunDuration = 1f;
+        
+        [Header("Stability & Stun Settings")]
+        [SerializeField, Tooltip("Durée d'immobilisation après avoir reçu un coup qui stun.")]
+        private float _hurtStunDuration = 1f;
+
+        [SerializeField, Tooltip("Délai minimum entre deux interruptions (stun) possibles.")]
+        private float _stunCooldown = 0.5f;
+        
+        [SerializeField, Tooltip("Nombre de coups nécessaires pour déclencher un stun (Poise).")]
+        private int _hitsToStun = 1;
+        
+        [SerializeField, Tooltip("Si vrai, l'ennemi ne peut pas être interrompu pendant son attaque.")]
+        private bool _superArmorDuringAttack = false;
 
         [Header("Attack Settings")]
         [SerializeField] private AttackType _attackType = AttackType.Sphere;
@@ -33,8 +45,13 @@ namespace PuzzleDungeon.Enemies
         [SerializeField] private float _attackCooldown = 2f;
         [SerializeField] private int _attackDamage = 1;
         [SerializeField] private float _attackDuration = 1f;
+        [SerializeField, Tooltip("Délai avant la toute première attaque après l'apparition.")] 
+        private float _initialAttackDelay = 1f;
         [SerializeField, Tooltip("L'ennemi peut-il pivoter vers le joueur pendant qu'il attaque ?")] 
         private bool _rotateDuringAttack = true;
+
+        [SerializeField, Tooltip("Multiplicateur de vitesse pour l'animation d'attaque.")]
+        private float _attackAnimationSpeed = 1f;
 
         [Header("Patrol Settings")]
         [SerializeField, Tooltip("Points de passage de la patrouille. L'ennemi restera sur place si la liste est vide.")] 
@@ -65,6 +82,8 @@ namespace PuzzleDungeon.Enemies
         private EnemyState _currentState = EnemyState.Idle;
         private EnemyState _stateBeforePause = EnemyState.Idle;
         private float _lastAttackTime;
+        private float _lastStunTime = -1f;
+        private int _currentStunHits = 0;
         private Coroutine _stateCoroutine;
 
         private void Awake()
@@ -114,6 +133,8 @@ namespace PuzzleDungeon.Enemies
 
         private void Start()
         {
+            // Initialiser le temps de la dernière attaque pour respecter le délai initial
+            _lastAttackTime = Time.time + _initialAttackDelay - _attackCooldown;
             ChangeState(EnemyState.Idle);
         }
 
@@ -258,10 +279,18 @@ namespace PuzzleDungeon.Enemies
 
             if (_enemyAudio != null) _enemyAudio.PlayAttackSFX();
 
+            // Ajuster la vitesse de l'animator pour l'attaque
+            float originalSpeed = _animator.speed;
+            _animator.speed = _attackAnimationSpeed;
+
             SetTriggerIfExists(_attackTrigger);
             
-            yield return new WaitForSeconds(_attackDuration);
+            // On attend la durée de l'attaque ajustée par la vitesse d'animation
+            yield return new WaitForSeconds(_attackDuration / _attackAnimationSpeed);
             
+            // Restaurer la vitesse de l'animator
+            _animator.speed = originalSpeed;
+
             // On marque la fin de l'attaque pour démarrer le cooldown
             _lastAttackTime = Time.time;
 
@@ -279,7 +308,28 @@ namespace PuzzleDungeon.Enemies
 
         private void HandleHurt()
         {
-            ChangeState(EnemyState.Hurt);
+            if (_currentState == EnemyState.Dead) return;
+
+            // 1. Super Armor : Ignorer le stun si on attaque
+            if (_superArmorDuringAttack && _currentState == EnemyState.Attack)
+            {
+                return;
+            }
+
+            // 2. Stun Cooldown : Ignorer si on a été stun trop récemment
+            if (Time.time - _lastStunTime < _stunCooldown)
+            {
+                return;
+            }
+
+            // 3. Poise : Incrémenter le compteur de coups
+            _currentStunHits++;
+            if (_currentStunHits >= _hitsToStun)
+            {
+                _currentStunHits = 0;
+                _lastStunTime = Time.time;
+                ChangeState(EnemyState.Hurt);
+            }
         }
 
         private void HandleDeath()

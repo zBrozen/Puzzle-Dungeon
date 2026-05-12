@@ -35,9 +35,10 @@ namespace PuzzleDungeon.Player
             if (_footstepClips == null || _footstepClips.Length == 0) return;
 
             AudioClip clip = _footstepClips[Random.Range(0, _footstepClips.Length)];
+            float globalMultiplier = (Systems.AudioManager.Instance != null) ? Systems.AudioManager.Instance.SFXVolume * Systems.AudioManager.Instance.MasterVolume : 1f;
             _footstepSource.pitch = 1f + Random.Range(-_footstepPitchRange, _footstepPitchRange);
             _footstepSource.clip = clip;
-            _footstepSource.volume = _footstepVolume;
+            _footstepSource.volume = _footstepVolume * globalMultiplier;
             _footstepSource.Play();
         }
 
@@ -66,9 +67,16 @@ namespace PuzzleDungeon.Player
         {
             if (clip == null) return;
             
-            _sfxSource.pitch = 1f + Random.Range(-0.1f, 0.1f); // Un peu plus de variation sur le pitch
+            // Calculer le volume final en fonction des paramètres globaux de l'AudioManager
+            float globalMultiplier = 1f;
+            if (Systems.AudioManager.Instance != null)
+            {
+                globalMultiplier = Systems.AudioManager.Instance.SFXVolume * Systems.AudioManager.Instance.MasterVolume;
+            }
+
+            _sfxSource.pitch = 1f + Random.Range(-0.1f, 0.1f);
             _sfxSource.clip = clip;
-            _sfxSource.volume = _sfxVolume;
+            _sfxSource.volume = _sfxVolume * globalMultiplier;
             _sfxSource.Play();
         }
     }
