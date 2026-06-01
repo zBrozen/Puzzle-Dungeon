@@ -17,6 +17,10 @@ namespace PuzzleDungeon.Enemies
         [SerializeField] private float _flashDuration = 0.5f;
         [SerializeField] private Color _flashColor = Color.red;
 
+        [Header("Death VFX")]
+        [SerializeField] private GameObject _deathVFXPrefab;
+        [SerializeField] private Vector3 _vfxOffset = Vector3.up;
+
         private int _currentHealth;
         private bool _isDead = false;
         private Color[] _originalColors;
@@ -66,6 +70,12 @@ namespace PuzzleDungeon.Enemies
         {
             _isDead = true;
             _currentHealth = 0;
+
+            if (_deathVFXPrefab != null)
+            {
+                Instantiate(_deathVFXPrefab, transform.position + _vfxOffset, Quaternion.identity);
+            }
+
             if (_enemyAudio != null) _enemyAudio.PlayDeathSFX();
             OnDeath?.Invoke();
         }

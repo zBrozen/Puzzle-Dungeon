@@ -45,6 +45,7 @@ namespace PuzzleDungeon.Player
         // Points de sauvegarde / respawn
         private Vector3 _respawnPosition;
         private Quaternion _respawnRotation;
+        private bool _isRespawnPointSet = false;
 
         // Événements pour mettre à jour l'UI ou déclencher des animations
         public event Action<int, int> OnHealthChanged; // Current, Max
@@ -59,6 +60,8 @@ namespace PuzzleDungeon.Player
         public bool IsInvulnerable => _isInvulnerable;
         public bool IsRespawning => _isRespawning;
         public float InvulnerabilityDuration => _invulnerabilityDuration;
+        public Vector3 RespawnPosition => _respawnPosition;
+        public Quaternion RespawnRotation => _respawnRotation;
 
         private void Awake()
         {
@@ -66,6 +69,9 @@ namespace PuzzleDungeon.Player
             
             // Initialisation par défaut (peut être écrasée par le PersistenceManager juste après l'Awake)
             _currentHealth = _maxHealth;
+
+            // Cache les renderers du modèle pour le clignotement
+            CacheRenderers();
         }
 
         private void Start()
@@ -74,6 +80,8 @@ namespace PuzzleDungeon.Player
             // que la vie vienne du défaut (Awake) ou de la sauvegarde (PersistenceManager).
             OnHealthChanged?.Invoke(_currentHealth, _maxHealth);
             
+            if (_isRespawnPointSet) return;
+
             // Chercher le point de spawn par défaut dans la scène
             PlayerSpawnPoint[] spawnPoints = FindObjectsOfType<PlayerSpawnPoint>();
             PlayerSpawnPoint startPoint = null;
@@ -91,9 +99,6 @@ namespace PuzzleDungeon.Player
                 // Fallback sur la position actuelle si aucun point de spawn n'est défini
                 SetRespawnPoint(transform.position, transform.rotation);
             }
-
-            // Cache les renderers du modèle pour le clignotement
-            CacheRenderers();
         }
 
         private void CacheRenderers()
@@ -134,6 +139,22 @@ namespace PuzzleDungeon.Player
         {
             _respawnPosition = position;
             _respawnRotation = rotation;
+            _isRespawnPointSet = true;
+        }
+
+        /// <summary>
+        /// Appelé quand le joueur passe un checkpoint.
+        /// Met à jour le point de respawn et déclenche une sauvegarde.
+        /// </summary>
+        public void CheckpointReached(Vector3 position, Quaternion rotation)
+        {
+            SetRespawnPoint(position, rotation);
+            
+            // On déclenche la sauvegarde via le PersistenceManager
+            if (PersistenceManager.Instance != null)
+            {
+                PersistenceManager.Instance.SaveGame();
+            }
         }
 
         public void TakeDamage(int damage, DamageType type = DamageType.Enemy)

@@ -34,6 +34,10 @@ namespace PuzzleDungeon.Systems.Save
         public int currentHealth;
         public float[] playerPosition = new float[3];
         public float[] playerRotation = new float[4];
+        
+        public float[] respawnPosition = new float[3];
+        public float[] respawnRotation = new float[4];
+        public bool hasCheckpoint = false;
 
         [Header("Inventory")]
         public List<string> inventoryItemNames = new List<string>();

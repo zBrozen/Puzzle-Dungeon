@@ -43,6 +43,10 @@ namespace PuzzleDungeon.Player
         private float _rollCooldown = 0.8f;
         [SerializeField, Tooltip("Durée de la décélération progressive après la roulade (en secondes)")]
         private float _rollDecelerationDuration = 0.2f;
+        [SerializeField, Tooltip("VFX à jouer pendant la roulade")]
+        private GameObject _rollVFXPrefab;
+        [SerializeField, Tooltip("Échelle du VFX de roulade")]
+        private float _rollVFXScale = 1f;
 
         [Header("Weapon & Combat Settings")]
         [SerializeField] private KeyCode _attackKey = KeyCode.Mouse0;
@@ -964,10 +968,37 @@ namespace PuzzleDungeon.Player
             _rollDirection = direction;
             _currentMoveDirection = direction;
 
+            // Orienter le joueur vers la direction de la roulade
+            if (direction.sqrMagnitude > 0.001f)
+            {
+                transform.rotation = Quaternion.LookRotation(direction);
+            }
+
             // Démarrer le boost DÈS le début pour couvrir le saut pendant ET après la roulade.
             _rollJumpBoostTimer = _rollDuration + _rollJumpBoostWindow;
 
+            GameObject vfxInstance = null;
+            if (_rollVFXPrefab != null)
+            {
+                // On inverse la direction pour le VFX car les particules semblent sortir par l'avant du prefab
+                vfxInstance = Instantiate(_rollVFXPrefab, transform.position, Quaternion.LookRotation(-direction), transform);
+                vfxInstance.transform.localScale = Vector3.one * _rollVFXScale;
+            }
+
             yield return new WaitForSeconds(_rollDuration);
+
+            if (vfxInstance != null)
+            {
+                // On arrête l'émission plutôt que de détruire brutalement
+                foreach (var ps in vfxInstance.GetComponentsInChildren<ParticleSystem>())
+                {
+                    ps.Stop();
+                }
+                
+                // On garde la parenté pour que l'effet suive le joueur pendant sa disparition
+                // On détruit l'objet après un court délai pour laisser les particules finir leur vie
+                Destroy(vfxInstance, 2f);
+            }
 
             _rollCooldownTimer = _rollCooldown;
             _rollDecelerationTimer = _rollDecelerationDuration;

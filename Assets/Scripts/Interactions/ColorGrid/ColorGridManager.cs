@@ -215,6 +215,17 @@ public class ColorGridManager : MonoBehaviour
                 if (grid[c, l] != null) { grid[c, l].Rise(); grid[c, l].SetAsCurrent(false); }
     }
 
+    public void RegeneratePuzzle()
+    {
+        ResetPuzzle();
+        // Unsubscribe from events to avoid duplicates when GenerateColors adds them again
+        for (int c = 0; c < totalColumns; c++)
+            for (int l = 0; l < totalLines; l++)
+                if (grid[c, l] != null) grid[c, l].OnPlayerEnter -= HandlePlayerEnter;
+        
+        GenerateColors();
+    }
+
     void PressButton()
     {
         if (buttonPressed) return;

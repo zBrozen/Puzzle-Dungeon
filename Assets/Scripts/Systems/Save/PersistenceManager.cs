@@ -195,7 +195,19 @@ namespace PuzzleDungeon.Systems.Save
                 _currentData.playerRotation[1] = health.transform.rotation.y;
                 _currentData.playerRotation[2] = health.transform.rotation.z;
                 _currentData.playerRotation[3] = health.transform.rotation.w;
-                Debug.Log($"[PersistenceManager] Player state collected: Pos={health.transform.position}, Health={health.CurrentHealth}");
+
+                // Sauvegarder aussi le point de respawn (Checkpoint)
+                _currentData.respawnPosition[0] = health.RespawnPosition.x;
+                _currentData.respawnPosition[1] = health.RespawnPosition.y;
+                _currentData.respawnPosition[2] = health.RespawnPosition.z;
+                
+                _currentData.respawnRotation[0] = health.RespawnRotation.x;
+                _currentData.respawnRotation[1] = health.RespawnRotation.y;
+                _currentData.respawnRotation[2] = health.RespawnRotation.z;
+                _currentData.respawnRotation[3] = health.RespawnRotation.w;
+                _currentData.hasCheckpoint = true; // Si on a des données de respawn, on a un checkpoint
+
+                Debug.Log($"[PersistenceManager] Player state collected: Pos={health.transform.position}, Respawn={health.RespawnPosition}, Health={health.CurrentHealth}");
                 
                 // S'abonner aux changements d'inventaire si ce n'est pas déjà fait
                 inventory = health.GetComponent<PlayerInventory>();
@@ -242,6 +254,14 @@ namespace PuzzleDungeon.Systems.Save
                 Vector3 pos = new Vector3(_currentData.playerPosition[0], _currentData.playerPosition[1], _currentData.playerPosition[2]);
                 Quaternion rot = new Quaternion(_currentData.playerRotation[0], _currentData.playerRotation[1], _currentData.playerRotation[2], _currentData.playerRotation[3]);
                 
+                // Si on a un checkpoint enregistré, c'est là qu'on doit recommencer (Simplified Gameover / Checkpoint system)
+                if (_currentData.hasCheckpoint && !_currentData.isNewGame)
+                {
+                    pos = new Vector3(_currentData.respawnPosition[0], _currentData.respawnPosition[1], _currentData.respawnPosition[2]);
+                    rot = new Quaternion(_currentData.respawnRotation[0], _currentData.respawnRotation[1], _currentData.respawnRotation[2], _currentData.respawnRotation[3]);
+                    Debug.Log("[PersistenceManager] Resuming from last Checkpoint position.");
+                }
+
                 PlayerController pc = health.GetComponent<PlayerController>();
                 if (pc != null)
                 {
@@ -279,6 +299,14 @@ namespace PuzzleDungeon.Systems.Save
 
 
                 health.RestoreHealth(_currentData.currentHealth);
+
+                // Mettre à jour le point de respawn interne de PlayerHealth pour les futurs morts
+                if (_currentData.hasCheckpoint)
+                {
+                    Vector3 respawnPos = new Vector3(_currentData.respawnPosition[0], _currentData.respawnPosition[1], _currentData.respawnPosition[2]);
+                    Quaternion respawnRot = new Quaternion(_currentData.respawnRotation[0], _currentData.respawnRotation[1], _currentData.respawnRotation[2], _currentData.respawnRotation[3]);
+                    health.SetRespawnPoint(respawnPos, respawnRot);
+                }
             }
 
             // 3. Inventaire
