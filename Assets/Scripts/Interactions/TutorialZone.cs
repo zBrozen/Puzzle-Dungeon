@@ -1,6 +1,7 @@
 using UnityEngine;
 using PuzzleDungeon.Systems.Save;
 using PuzzleDungeon.UI;
+using PuzzleDungeon.Controls;
 
 namespace PuzzleDungeon.Interactions
 {
@@ -41,7 +42,7 @@ namespace PuzzleDungeon.Interactions
             // Show UI
             if (TutorialUIManager.Instance != null)
             {
-                TutorialUIManager.Instance.ShowTutorial(_message, _image, _displayDuration);
+                TutorialUIManager.Instance.ShowTutorial(GameInput.AdaptText(_message), _image, _displayDuration);
             }
 
             // Mark as seen and save

@@ -1,0 +1,10 @@
+# En-têtes Netlify (ce fichier est copié à la racine du build par Unity).
+# Le build est compressé en Brotli avec "Decompression Fallback" : les fichiers
+# finissent en .unityweb. Avec Content-Encoding, le navigateur les décompresse
+# lui-même (plus rapide) ; sinon le loader Unity le fait en JavaScript.
+/Build/*.unityweb
+  Content-Encoding: br
+  Cache-Control: public, max-age=3600
+
+/Build/*.loader.js
+  Cache-Control: public, max-age=3600

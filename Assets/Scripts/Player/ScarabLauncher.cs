@@ -1,6 +1,7 @@
 using UnityEngine;
 using System.Collections;
 using PuzzleDungeon.Interactions;
+using PuzzleDungeon.Controls;
 
 namespace PuzzleDungeon.Player
 {
@@ -52,10 +53,14 @@ namespace PuzzleDungeon.Player
 
         private void Update()
         {
+            // Le bouton tactile n'apparaît qu'une fois le scarabée obtenu
+            GameInput.SetButtonAvailable(GameButton.Scarab,
+                _currentState != LauncherState.Idle || _inventory == null || _inventory.HasItem(_beetleItemName));
+
             switch (_currentState)
             {
                 case LauncherState.Idle:
-                    if (Input.GetKeyDown(_launchKey) && Time.time > _lastLaunchTime + _cooldown)
+                    if (GameInput.GetButtonDown(GameButton.Scarab, _launchKey) && Time.time > _lastLaunchTime + _cooldown)
                     {
                         // On vérifie si on possède le scarabée dans l'inventaire
                         if (_inventory != null && !_inventory.HasItem(_beetleItemName)) return;
@@ -73,7 +78,7 @@ namespace PuzzleDungeon.Player
                     break;
 
                 case LauncherState.Flying:
-                    if (Input.GetKeyDown(_launchKey))
+                    if (GameInput.GetButtonDown(GameButton.Scarab, _launchKey))
                     {
                         if (_activeScarab != null) _activeScarab.Explode();
                     }
@@ -161,11 +166,11 @@ namespace PuzzleDungeon.Player
                 }
             }
 
-            if (Input.GetKeyDown(_cancelKey))
+            if (GameInput.GetButtonDown(GameButton.Action, _cancelKey))
             {
                 CancelAiming();
             }
-            else if (Input.GetKeyDown(_launchKey))
+            else if (GameInput.GetButtonDown(GameButton.Scarab, _launchKey))
             {
                 ConfirmLaunch();
             }

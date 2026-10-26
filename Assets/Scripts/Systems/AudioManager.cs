@@ -51,12 +51,11 @@ namespace PuzzleDungeon.Systems
                 DontDestroyOnLoad(gameObject);
                 LoadVolumes();
                 
-                // Set default quality to Ultra (highest index) if not set
+                // Première partie : on garde la qualité par défaut de la plateforme
+                // (Quality Settings : Ultra sur PC, plus bas sur Web/mobile)
                 if (!PlayerPrefs.HasKey("QualityLevel"))
                 {
-                    int ultraIndex = QualitySettings.names.Length - 1;
-                    QualitySettings.SetQualityLevel(ultraIndex, true);
-                    PlayerPrefs.SetInt("QualityLevel", ultraIndex);
+                    PlayerPrefs.SetInt("QualityLevel", QualitySettings.GetQualityLevel());
                 }
                 else
                 {

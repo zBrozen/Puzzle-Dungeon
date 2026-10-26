@@ -1,4 +1,5 @@
 using UnityEngine;
+using PuzzleDungeon.Controls;
 
 namespace PuzzleDungeon.Interactions
 {
@@ -217,9 +218,10 @@ namespace PuzzleDungeon.Interactions
 
         private void HandleInputAndMovement()
         {
-            // 1. Inputs (ZQSD / WASD / Flèches)
-            float horizontal = Input.GetAxis("Horizontal");
-            float vertical = Input.GetAxis("Vertical");
+            // 1. Inputs (ZQSD / WASD / Flèches / joystick tactile)
+            Vector2 move = GameInput.GetMove(raw: false);
+            float horizontal = move.x;
+            float vertical = move.y;
 
             // --- INVERSION INTELLIGENTE ---
             // Si on est à l'envers (tête vers le sol), on inverse la gauche et la droite

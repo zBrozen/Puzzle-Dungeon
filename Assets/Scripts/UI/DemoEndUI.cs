@@ -10,6 +10,8 @@ namespace PuzzleDungeon.UI
     {
         public static DemoEndUI Instance { get; private set; }
 
+        public bool IsShown => _panel != null && _panel.activeInHierarchy;
+
         [Header("UI Elements")]
         [SerializeField] private GameObject _panel;
         [SerializeField] private TextMeshProUGUI _titleText;

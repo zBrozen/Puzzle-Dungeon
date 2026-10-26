@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 using PuzzleDungeon.Systems.Save;
 using PuzzleDungeon.Player;
+using PuzzleDungeon.Controls;
 
 namespace PuzzleDungeon.Systems
 {
@@ -19,6 +20,10 @@ namespace PuzzleDungeon.Systems
 
         private bool _isPaused = false;
         public bool IsPaused => _isPaused;
+
+#pragma warning disable CS0414 // utilisé seulement dans le build WebGL
+        private bool _wasCursorLocked = false;
+#pragma warning restore CS0414
 
         private PlayerController _playerController;
         private CameraController _cameraController;
@@ -63,11 +68,19 @@ namespace PuzzleDungeon.Systems
 
         private void Update()
         {
-            if (Input.GetKeyDown(KeyCode.Escape))
+            if (GameInput.GetButtonDown(GameButton.Pause, KeyCode.Escape))
             {
                 if (_isPaused) Resume();
                 else Pause();
             }
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+            // Dans le navigateur, Échap libère le curseur sans transmettre la touche au jeu :
+            // on met en pause quand le curseur verrouillé est perdu.
+            bool isLocked = Cursor.lockState == CursorLockMode.Locked;
+            if (_wasCursorLocked && !isLocked && !_isPaused && !GameInput.TouchControlsActive) Pause();
+            _wasCursorLocked = isLocked;
+#endif
         }
 
         public void Pause()
@@ -108,6 +121,9 @@ namespace PuzzleDungeon.Systems
 
         private void SetCursorState(bool visible)
         {
+            // Pas de curseur à verrouiller sur écran tactile
+            if (GameInput.TouchControlsActive) return;
+
             Cursor.visible = visible;
             Cursor.lockState = visible ? CursorLockMode.None : CursorLockMode.Locked;
         }

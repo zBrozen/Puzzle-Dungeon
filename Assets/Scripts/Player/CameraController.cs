@@ -1,4 +1,5 @@
 using UnityEngine;
+using PuzzleDungeon.Controls;
 
 namespace PuzzleDungeon.Player
 {
@@ -100,10 +101,11 @@ namespace PuzzleDungeon.Player
 
         private void HandleInput()
         {
-            _currentX += Input.GetAxis("Mouse X") * _sensitivity;
-            _currentY -= Input.GetAxis("Mouse Y") * _sensitivity;
+            Vector2 look = GameInput.GetLook();
+            _currentX += look.x * _sensitivity;
+            _currentY -= look.y * _sensitivity;
             _currentY = Mathf.Clamp(_currentY, _activeMinAngle, _activeMaxAngle);
-            _distance -= Input.GetAxis("Mouse ScrollWheel") * 5f;
+            _distance -= GameInput.GetZoom() * 5f;
             _distance = Mathf.Clamp(_distance, _minDistance, _maxDistance);
             
             // La touche Escape est gérée par PauseManager

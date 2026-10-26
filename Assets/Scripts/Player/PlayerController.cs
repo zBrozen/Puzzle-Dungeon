@@ -1,5 +1,6 @@
 using UnityEngine;
 using PuzzleDungeon.Interactions;
+using PuzzleDungeon.Controls;
 using System;
 using System.Collections.Generic;
 
@@ -203,6 +204,10 @@ namespace PuzzleDungeon.Player
 
             HandleGroundedStatus();
 
+            // Boutons tactiles à afficher : Interagir est réactivé par HandleInteraction devant un objet
+            GameInput.SetButtonAvailable(GameButton.Attack, _inventory == null || _inventory.HasItem("Sword"));
+            GameInput.SetButtonAvailable(GameButton.Interact, false);
+
             // Décrémenter les timers de roulade
             if (_rollJumpBoostTimer > 0f)
                 _rollJumpBoostTimer -= Time.deltaTime;
@@ -285,9 +290,10 @@ namespace PuzzleDungeon.Player
 
         private void HandleMovement()
         {
-            float horizontal = Input.GetAxisRaw("Horizontal");
-            float vertical = Input.GetAxisRaw("Vertical");
-            _inputDirection = new Vector2(horizontal, vertical);
+            Vector2 move = GameInput.GetMove(raw: true);
+            float horizontal = move.x;
+            float vertical = move.y;
+            _inputDirection = move;
             
             if (_currentState == PlayerState.Attack) return;
 
@@ -398,7 +404,7 @@ namespace PuzzleDungeon.Player
             // On ne peut dégainer que si on possède l'épée dans l'inventaire
             if (_inventory != null && !_inventory.HasItem("Sword")) return;
 
-            if (Input.GetKeyDown(_attackKey))
+            if (GameInput.GetButtonDown(GameButton.Attack, _attackKey))
             {
                 if (!_isWeaponDrawn)
                 {
@@ -448,6 +454,8 @@ namespace PuzzleDungeon.Player
             // Show prompt if we have an interactable and we can interact
             if (currentInteractable != null && currentInteractable.CanInteract(this))
             {
+                GameInput.SetButtonAvailable(GameButton.Interact, true);
+
                 string prompt = currentInteractable.GetInteractionPrompt(this);
                 if (!string.IsNullOrEmpty(prompt))
                 {
@@ -455,11 +463,13 @@ namespace PuzzleDungeon.Player
                     // We use a very short duration because this is called in Update
                     if (PuzzleDungeon.UI.TutorialUIManager.Instance != null)
                     {
-                        PuzzleDungeon.UI.TutorialUIManager.Instance.ShowTutorial($"[{_interactKey}] {prompt}", null, 0.1f);
+                        // Au tactile, le bouton "Interagir" apparaît : pas de touche à afficher
+                        string text = GameInput.TouchControlsActive ? prompt : $"[{_interactKey}] {prompt}";
+                        PuzzleDungeon.UI.TutorialUIManager.Instance.ShowTutorial(text, null, 0.1f);
                     }
                 }
 
-                if (Input.GetKeyDown(_interactKey))
+                if (GameInput.GetButtonDown(GameButton.Interact, _interactKey))
                 {
                     currentInteractable.Interact(this);
                 }
@@ -927,7 +937,7 @@ namespace PuzzleDungeon.Player
             // On peut grimper si :
             // 1. On appuie sur la touche (manuel, souvent utilisé au sol)
             // 2. On n'est pas "vraiment" au sol (automatique, pour attraper un rebord pendant un saut/chute)
-            bool shouldCheck = Input.GetKeyDown(_climbKey) || !trueGrounded;
+            bool shouldCheck = GameInput.GetButtonDown(GameButton.Action, _climbKey) || !trueGrounded;
 
             if (shouldCheck)
             {
@@ -935,7 +945,7 @@ namespace PuzzleDungeon.Player
                 {
                     // Empêche l'accroche AUTOMATIQUE sur les objets interactables (ex: cubes)
                     // On n'autorise la grimpe sur ces objets que si le joueur appuie manuellement sur la touche.
-                    bool isManualInput = Input.GetKeyDown(_climbKey);
+                    bool isManualInput = GameInput.GetButtonDown(GameButton.Action, _climbKey);
                     if (!isManualInput && Physics.CheckSphere(targetPos, 0.3f, _interactableLayer))
                     {
                         return;
@@ -949,7 +959,7 @@ namespace PuzzleDungeon.Player
         private void HandleRollInput()
         {
             // La roulade ne se déclenche qu'au sol, sur pression de Space, et hors cooldown
-            if (!_isGrounded || !Input.GetKeyDown(_climbKey)) return;
+            if (!_isGrounded || !GameInput.GetButtonDown(GameButton.Action, _climbKey)) return;
             if (_currentState == PlayerState.HardLand || _currentState == PlayerState.Push || _currentState == PlayerState.BigPush) return;
             if (_rollCooldownTimer > 0f) return;
 

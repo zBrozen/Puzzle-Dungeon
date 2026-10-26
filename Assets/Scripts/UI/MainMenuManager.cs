@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using UnityEngine.UI;
 using PuzzleDungeon.Systems.Save;
 
 namespace PuzzleDungeon.UI
@@ -22,6 +23,26 @@ namespace PuzzleDungeon.UI
             // Ensure cursor is visible
             Cursor.visible = true;
             Cursor.lockState = CursorLockMode.None;
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+            // Impossible de quitter un onglet de navigateur : on masque le bouton
+            HideButtonsCalling(nameof(QuitGame));
+#endif
+        }
+
+        private void HideButtonsCalling(string methodName)
+        {
+            foreach (Button button in FindObjectsByType<Button>(FindObjectsInactive.Include))
+            {
+                for (int i = 0; i < button.onClick.GetPersistentEventCount(); i++)
+                {
+                    if (button.onClick.GetPersistentMethodName(i) == methodName)
+                    {
+                        button.gameObject.SetActive(false);
+                        break;
+                    }
+                }
+            }
         }
 
         public void ShowMainPage()

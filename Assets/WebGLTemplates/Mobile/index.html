@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, height=device-height, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>{{{ PRODUCT_NAME }}}</title>
+    <style>
+      html, body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #000;
+        color: #ddd;
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        overscroll-behavior: none;
+        -webkit-user-select: none;
+        user-select: none;
+        -webkit-touch-callout: none;
+      }
+      #unity-canvas {
+        position: fixed;
+        inset: 0;
+        width: 100vw;
+        height: 100dvh;
+        display: block;
+        background: #000;
+        touch-action: none;
+        outline: none;
+      }
+      #loading {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 16px;
+        background: #000;
+      }
+      #loading-title { font-size: 20px; letter-spacing: 0.08em; }
+      #progress { width: min(60vw, 320px); height: 6px; background: #222; border-radius: 3px; overflow: hidden; }
+      #progress-fill { width: 0%; height: 100%; background: #c9a227; transition: width 0.2s; }
+      #fullscreen-button {
+        position: fixed;
+        top: max(10px, env(safe-area-inset-top));
+        right: max(10px, env(safe-area-inset-right));
+        padding: 8px 12px;
+        border: 1px solid rgba(255, 255, 255, 0.4);
+        border-radius: 6px;
+        background: rgba(0, 0, 0, 0.4);
+        color: #fff;
+        font-size: 14px;
+        display: none;
+      }
+      #error {
+        position: fixed;
+        left: 16px;
+        right: 16px;
+        bottom: 16px;
+        padding: 12px;
+        border-radius: 6px;
+        background: #6b1d1d;
+        color: #fff;
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="unity-canvas" tabindex="-1"></canvas>
+    <div id="loading">
+      <div id="loading-title">{{{ PRODUCT_NAME }}}</div>
+      <div id="progress"><div id="progress-fill"></div></div>
+    </div>
+    <button id="fullscreen-button" type="button">Plein écran</button>
+    <div id="error"></div>
+
+    <script>
+      var canvas = document.querySelector("#unity-canvas");
+      var loading = document.querySelector("#loading");
+      var progressFill = document.querySelector("#progress-fill");
+      var fullscreenButton = document.querySelector("#fullscreen-button");
+      var errorBox = document.querySelector("#error");
+
+      var isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
+        || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
+
+      function unityShowBanner(msg, type) {
+        if (type === "error") {
+          errorBox.textContent = msg;
+          errorBox.style.display = "block";
+        } else {
+          console.warn(msg);
+        }
+      }
+
+      // Pas de menu contextuel / zoom / scroll pendant le jeu
+      document.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+      document.addEventListener("touchmove", function (e) { e.preventDefault(); }, { passive: false });
+      document.addEventListener("gesturestart", function (e) { e.preventDefault(); });
+
+      var buildUrl = "Build";
+      var loaderUrl = buildUrl + "/{{{ LOADER_FILENAME }}}";
+      var config = {
+        arguments: [],
+        dataUrl: buildUrl + "/{{{ DATA_FILENAME }}}",
+        frameworkUrl: buildUrl + "/{{{ FRAMEWORK_FILENAME }}}",
+#if USE_THREADS
+        workerUrl: buildUrl + "/{{{ WORKER_FILENAME }}}",
+#endif
+#if USE_WASM
+        codeUrl: buildUrl + "/{{{ CODE_FILENAME }}}",
+#endif
+#if MEMORY_FILENAME
+        memoryUrl: buildUrl + "/{{{ MEMORY_FILENAME }}}",
+#endif
+#if SYMBOLS_FILENAME
+        symbolsUrl: buildUrl + "/{{{ SYMBOLS_FILENAME }}}",
+#endif
+        streamingAssetsUrl: "StreamingAssets",
+        companyName: {{{ JSON.stringify(COMPANY_NAME) }}},
+        productName: {{{ JSON.stringify(PRODUCT_NAME) }}},
+        productVersion: {{{ JSON.stringify(PRODUCT_VERSION) }}},
+        showBanner: unityShowBanner,
+      };
+
+      // Les téléphones ont un devicePixelRatio de 2 à 3 : rendre à cette résolution
+      // coûte très cher pour un gain visuel faible. On plafonne.
+      if (isMobile) {
+        config.devicePixelRatio = Math.min(window.devicePixelRatio || 1, 1.5);
+      }
+
+      var script = document.createElement("script");
+      script.src = loaderUrl;
+      script.onload = function () {
+        createUnityInstance(canvas, config, function (progress) {
+          progressFill.style.width = (100 * progress) + "%";
+        }).then(function (unityInstance) {
+          loading.style.display = "none";
+
+          if (isMobile && document.fullscreenEnabled) {
+            fullscreenButton.style.display = "block";
+            fullscreenButton.addEventListener("click", function () {
+              document.documentElement.requestFullscreen().then(function () {
+                fullscreenButton.style.display = "none";
+                if (screen.orientation && screen.orientation.lock) {
+                  screen.orientation.lock("landscape").catch(function () {});
+                }
+              }).catch(function () {});
+            });
+            document.addEventListener("fullscreenchange", function () {
+              fullscreenButton.style.display = document.fullscreenElement ? "none" : "block";
+            });
+          }
+        }).catch(function (message) {
+          unityShowBanner(String(message), "error");
+        });
+      };
+      document.body.appendChild(script);
+    </script>
+  </body>
+</html>
