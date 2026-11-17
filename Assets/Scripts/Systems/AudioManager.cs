@@ -59,7 +59,8 @@ namespace PuzzleDungeon.Systems
                 }
                 else
                 {
-                    QualitySettings.SetQualityLevel(PlayerPrefs.GetInt("QualityLevel"), true);
+                    // Clamp : une ancienne sauvegarde peut contenir un niveau non supporté sur le Web
+                    QualityLevels.Apply(PlayerPrefs.GetInt("QualityLevel"));
                 }
 
                 InitializePool();

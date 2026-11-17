@@ -30,8 +30,15 @@ namespace PuzzleDungeon.EditorTools
             PlayerSettings.WebGL.decompressionFallback = true; // marche même si le serveur n'envoie pas les bons en-têtes
             PlayerSettings.WebGL.dataCaching = true;
             PlayerSettings.WebGL.maximumMemorySize = WebMaxMemoryMB;
-            PlayerSettings.SetIl2CppCodeGeneration(NamedBuildTarget.WebGL, Il2CppCodeGeneration.OptimizeSize);
-            report.AppendLine($"Template {WebTemplate}, Brotli + repli, mémoire max {WebMaxMemoryMB} Mo, IL2CPP optimisé pour la taille.");
+            // Vitesse plutôt que taille : le .wasm grossit un peu, mais le jeu tourne plus vite
+            PlayerSettings.SetIl2CppCodeGeneration(NamedBuildTarget.WebGL, Il2CppCodeGeneration.OptimizeSpeed);
+            report.AppendLine($"Template {WebTemplate}, Brotli + repli, mémoire max {WebMaxMemoryMB} Mo, IL2CPP optimisé pour la vitesse.");
+
+            // Batching : sur le Web, chaque draw call coûte cher (un seul thread, WebGL au-dessus de D3D/Metal).
+            // Le static batching regroupe les objets statiques du décor ; le .data grossit un peu.
+            PlayerSettings.SetStaticBatchingForPlatform(BuildTarget.WebGL, true);
+            PlayerSettings.SetDynamicBatchingForPlatform(BuildTarget.WebGL, true);
+            report.AppendLine("Static et dynamic batching activés.");
 
             // Textures en ASTC : format natif des téléphones
             EditorUserBuildSettings.webGLBuildSubtarget = WebGLTextureSubtarget.ASTC;

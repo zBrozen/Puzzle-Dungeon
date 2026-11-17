@@ -31,11 +31,12 @@ namespace PuzzleDungeon.UI
             if (_qualityDropdown != null)
             {
                 _qualityDropdown.ClearOptions();
+                // Seulement les niveaux sûrs pour la plateforme (sur le Web : jusqu'à High)
                 List<string> options = new List<string>(QualitySettings.names);
+                options.RemoveRange(QualityLevels.Count, options.Count - QualityLevels.Count);
                 _qualityDropdown.AddOptions(options);
-                
-                // If first time, we might want to default to Ultra (usually the last index)
-                int currentQuality = QualitySettings.GetQualityLevel();
+
+                int currentQuality = QualityLevels.Clamp(QualitySettings.GetQualityLevel());
                 _qualityDropdown.value = currentQuality;
                 
                 _qualityDropdown.onValueChanged.RemoveAllListeners();
@@ -68,7 +69,7 @@ namespace PuzzleDungeon.UI
 
         public void SetQuality(int index)
         {
-            QualitySettings.SetQualityLevel(index, true);
+            index = QualityLevels.Apply(index);
             PlayerPrefs.SetInt("QualityLevel", index);
             PlayerPrefs.Save();
             Debug.Log($"[Settings] Quality set to: {QualitySettings.names[index]}");

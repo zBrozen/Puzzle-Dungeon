@@ -128,11 +128,11 @@
         showBanner: unityShowBanner,
       };
 
-      // Les téléphones ont un devicePixelRatio de 2 à 3 : rendre à cette résolution
-      // coûte très cher pour un gain visuel faible. On plafonne.
-      if (isMobile) {
-        config.devicePixelRatio = Math.min(window.devicePixelRatio || 1, 1.5);
-      }
+      // Le canvas occupe tout l'écran à la résolution native : sur un écran haute densité,
+      // c'est jusqu'à 7× plus de pixels que le canvas 960×600 du template Default d'Unity.
+      // Téléphones (devicePixelRatio de 2 à 3) : plafond à 1.5.
+      // Ordinateurs (souvent 1.25 à 2 sous Windows/macOS) : plafond à 1, soit un pixel de jeu par pixel CSS.
+      config.devicePixelRatio = Math.min(window.devicePixelRatio || 1, isMobile ? 1.5 : 1);
 
       var script = document.createElement("script");
       script.src = loaderUrl;

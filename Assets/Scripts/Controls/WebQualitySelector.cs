@@ -17,7 +17,7 @@ namespace PuzzleDungeon.Controls
             if (Application.isMobilePlatform) return;
 
             int index = System.Array.IndexOf(QualitySettings.names, DesktopQualityName);
-            if (index >= 0) QualitySettings.SetQualityLevel(index, true);
+            if (index >= 0) PuzzleDungeon.Systems.QualityLevels.Apply(index);
         }
 #endif
     }
